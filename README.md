@@ -50,6 +50,8 @@ The frontend proxy is environment-driven:
 
 ## Documentation
 
+- **[Dev Server Setup](./docs/DEV_SETUP.md)** - Start the full stack locally with one admin user
+- **[Production Server Setup](./docs/PROD_SETUP.md)** - Deploy to a production server with HTTPS and one admin user
 - **[Quick Start: Adapters](./docs/QUICK_START_ADAPTERS.md)** - Get started with Site Adapters in 5 minutes
 - **[Adapter Examples](./docs/ADAPTER_EXAMPLES.md)** - Real-world examples for inbound mapping and pull configs
 - **[Terminology Guide](./docs/TERMINOLOGY.md)** - Understanding flexible data sources beyond IoT sensors
