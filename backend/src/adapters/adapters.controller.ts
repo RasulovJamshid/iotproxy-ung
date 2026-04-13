@@ -8,6 +8,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { AdaptersService } from './adapters.service';
+import { AdapterTemplatesService } from './adapter-templates.service';
 import { SiteAdapter } from './site-adapter.entity';
 
 @ApiTags('adapters')
@@ -15,7 +16,10 @@ import { SiteAdapter } from './site-adapter.entity';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('adapters')
 export class AdaptersController {
-  constructor(private service: AdaptersService) {}
+  constructor(
+    private service: AdaptersService,
+    private templatesService: AdapterTemplatesService,
+  ) {}
 
   @Get()
   @Roles('VIEWER')
@@ -50,5 +54,55 @@ export class AdaptersController {
   @Roles('ADMIN')
   triggerPull(@Param('siteId') siteId: string, @CurrentUser() user: AuthUser) {
     return this.service.triggerPull(siteId, user.organizationId);
+  }
+
+  /** Snapshot the current adapter config as a named reusable template */
+  @Post(':siteId/save-as-template')
+  @Roles('ADMIN')
+  async saveAsTemplate(
+    @Param('siteId') siteId: string,
+    @Body() body: { name: string; description?: string },
+    @CurrentUser() user: AuthUser,
+  ) {
+    const adapter = await this.service.findOne(siteId, user.organizationId);
+    return this.templatesService.create(user.organizationId, {
+      name: body.name,
+      description: body.description,
+      inboundMapping: adapter.inboundMapping,
+      pullMethod: adapter.pullMethod,
+      pullHeaders: adapter.pullHeaders,
+      pullQueryParams: adapter.pullQueryParams,
+      pullAuthType: adapter.pullAuthType,
+      // Only store the header name hint, never the actual secret value
+      pullAuthConfig: adapter.pullAuthConfig?.headerName
+        ? { headerName: adapter.pullAuthConfig.headerName }
+        : undefined,
+      pullBodyTemplate: adapter.pullBodyTemplate,
+      pullIntervalSec: adapter.pullIntervalSec,
+      responseMapping: adapter.responseMapping,
+    });
+  }
+
+  /** Apply a saved template onto a site adapter (non-destructive — only overwrites mapping fields) */
+  @Post(':siteId/apply-template/:templateId')
+  @Roles('ADMIN')
+  async applyTemplate(
+    @Param('siteId') siteId: string,
+    @Param('templateId') templateId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const tpl = await this.templatesService.findOne(templateId, user.organizationId);
+    return this.service.upsert(siteId, user.organizationId, {
+      inboundMapping: tpl.inboundMapping,
+      pullMethod: tpl.pullMethod,
+      pullHeaders: tpl.pullHeaders,
+      pullQueryParams: tpl.pullQueryParams,
+      pullAuthType: tpl.pullAuthType,
+      // Apply the header name hint but leave value blank so user fills in credentials
+      pullAuthConfig: tpl.pullAuthConfig ?? undefined,
+      pullBodyTemplate: tpl.pullBodyTemplate,
+      pullIntervalSec: tpl.pullIntervalSec,
+      responseMapping: tpl.responseMapping,
+    });
   }
 }

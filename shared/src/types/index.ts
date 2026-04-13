@@ -117,6 +117,26 @@ export interface SiteAdapter {
   updatedAt: string;
 }
 
+/** Reusable adapter mapping/request template (credentials excluded) */
+export interface AdapterTemplate {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  inboundMapping?: InboundMapping;
+  pullMethod: string;
+  pullHeaders?: Record<string, string>;
+  pullQueryParams?: Record<string, string>;
+  pullAuthType: PullAuthType;
+  /** Only the header name hint is stored; actual secret is never saved in a template */
+  pullAuthConfig?: Pick<PullAuthConfig, 'headerName'>;
+  pullBodyTemplate?: Record<string, unknown>;
+  pullIntervalSec: number;
+  responseMapping?: ResponseMapping;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── WebSocket events ─────────────────────────────────────────────────────────
 
 export interface WsReadingEvent {

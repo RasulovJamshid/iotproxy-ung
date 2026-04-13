@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Save, HelpCircle } from 'lucide-react';
+import { Save, HelpCircle, BookTemplate } from 'lucide-react';
 import { SiteAdapter } from '@iotproxy/shared';
 import { useUpdateAdapter } from '../../hooks/useAdapters';
+import { SaveAsTemplateModal } from './SaveAsTemplateModal';
 
 interface Props {
   siteId: string;
@@ -14,6 +15,7 @@ export function InboundConfigForm({ siteId, adapter }: Props) {
   const [sensorIdPath, setSensorIdPath] = useState('$.sensorId');
   const [phenomenonTimePath, setPhenomenonTimePath] = useState('$.phenomenonTime');
   const [dataPath, setDataPath] = useState('$.data');
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   const updateAdapter = useUpdateAdapter();
 
@@ -157,7 +159,17 @@ export function InboundConfigForm({ siteId, adapter }: Props) {
         </>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setShowTemplateModal(true)}
+          disabled={!adapter}
+          title={!adapter ? 'Save adapter config first' : 'Save current config as a reusable template'}
+          className="flex items-center gap-2 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <BookTemplate className="w-4 h-4" />
+          Save as Template
+        </button>
         <button
           type="submit"
           disabled={updateAdapter.isPending}
@@ -167,6 +179,10 @@ export function InboundConfigForm({ siteId, adapter }: Props) {
           {updateAdapter.isPending ? 'Saving...' : 'Save Inbound Config'}
         </button>
       </div>
+
+      {showTemplateModal && (
+        <SaveAsTemplateModal siteId={siteId} onClose={() => setShowTemplateModal(false)} />
+      )}
     </form>
   );
 }
