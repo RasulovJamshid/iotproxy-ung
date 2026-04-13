@@ -30,7 +30,7 @@ type ServerErrorState = {
   message?: string;
 } | null;
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,

@@ -83,6 +83,15 @@ export class OrganizationsService {
     return { ...safe, role };
   }
 
+  /** Update the role for an existing membership without moving the user. */
+  async updateMembership(userId: string, orgId: string, role: string) {
+    const row = await this.memberships.findOne({ where: { userId, organizationId: orgId } });
+    if (!row) throw new NotFoundException('Membership not found');
+    await this.memberships.update({ userId, organizationId: orgId }, { role });
+    const org = await this.findOne(orgId);
+    return { orgId, orgName: org.name, role };
+  }
+
   /** Add an existing user to an org. */
   async addUserToOrg(userId: string, orgId: string, role: string) {
     const user = await this.users.findOne({ where: { id: userId } });

@@ -9,6 +9,15 @@ export function useSites() {
   });
 }
 
+/** Fetch sites for a specific org (SYSTEM_ADMIN only). */
+export function useOrgSites(orgId?: string) {
+  return useQuery<Site[]>({
+    queryKey: ['sites', 'org', orgId],
+    queryFn: async () => (await api.get('/sites', { params: { orgId } })).data,
+    enabled: !!orgId,
+  });
+}
+
 export function useSite(id: string) {
   return useQuery<Site>({
     queryKey: ['sites', id],

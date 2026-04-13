@@ -22,6 +22,13 @@ export class OrganizationsController {
     return this.service.findAll();
   }
 
+  /** Get all org memberships for a specific user. SYSTEM_ADMIN only. */
+  @Get('members/:userId')
+  @Roles('SYSTEM_ADMIN')
+  getUserMemberships(@Param('userId') userId: string) {
+    return this.service.findUserMemberships(userId);
+  }
+
   @Get(':id')
   @Roles('ADMIN')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
@@ -72,6 +79,17 @@ export class OrganizationsController {
     @Body() body: { userId: string; role: string },
   ) {
     return this.service.addUserToOrg(body.userId, id, body.role);
+  }
+
+  /** Update a user's role within a specific org. SYSTEM_ADMIN only. */
+  @Patch(':id/members/:userId')
+  @Roles('SYSTEM_ADMIN')
+  updateMember(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Body() body: { role: string },
+  ) {
+    return this.service.updateMembership(userId, id, body.role);
   }
 
   /** Remove a user from an org. SYSTEM_ADMIN only. */

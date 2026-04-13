@@ -74,11 +74,22 @@ export interface AlertEvent {
   createdAt: string;
 }
 
+export interface ApiKeyScope {
+  orgId: string;
+  siteId?: string;
+}
+
 export interface ApiKey {
   id: string;
   name: string;
   prefix: string;
   permissions: string[];
+  websocketEnabled?: boolean;
+  /** GLOBAL | ORGS | SITES — defaults to SITES for legacy keys */
+  scopeType?: string;
+  /** Populated for ORGS/SITES keys */
+  scopes?: ApiKeyScope[];
+  /** Legacy single-site */
   siteId?: string;
   expiresAt?: string;
   revokedAt?: string;

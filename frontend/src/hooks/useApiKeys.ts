@@ -17,6 +17,8 @@ export function useCreateApiKey() {
   return useMutation({
     mutationFn: (body: {
       name: string;
+      scopeType?: string;
+      scopes?: Array<{ orgId: string; siteId?: string }>;
       siteId?: string;
       permissions?: string[];
       websocketEnabled?: boolean;

@@ -42,15 +42,35 @@ export class FlexibleAuthGuard implements CanActivate {
     const key = await this.apiKeys.validate(rawKey);
     if (!key) throw new UnauthorizedException('Invalid or expired API key');
 
-    // Don't check permissions here - let each controller validate based on its needs
-    // (e.g., 'ingest' for ingest endpoints, 'read' for query endpoints, 'admin' for write operations)
-
     const orgContext: OrgContext = {
       organizationId: key.organizationId,
-      siteId: key.siteId,
       permissions: key.permissions,
       apiKeyId: key.id,
+      scopeType: key.scopeType,
     };
+
+    if (key.scopeType === 'GLOBAL') {
+      // No restrictions — downstream code may use any org/site
+    } else if (key.scopes?.length) {
+      const orgRows = key.scopes.filter((s) => !s.siteId);
+      const siteRows = key.scopes.filter((s) => s.siteId);
+
+      if (orgRows.length) {
+        // ORGS scope: allowed org IDs (all their sites)
+        orgContext.allowedOrgIds = orgRows.map((s) => s.orgId);
+        orgContext.organizationId = orgRows[0].orgId;
+      }
+      if (siteRows.length) {
+        // SITES scope: allowed (org, site) pairs
+        orgContext.allowedSites = siteRows.map((s) => ({ orgId: s.orgId, siteId: s.siteId! }));
+        orgContext.organizationId = siteRows[0].orgId;
+        orgContext.siteId = siteRows[0].siteId;
+      }
+    } else {
+      // Legacy: single-org + optional single-site stored on the key record
+      orgContext.siteId = key.siteId;
+    }
+
     req.orgContext = orgContext;
     return true;
   }

@@ -32,12 +32,14 @@ export class ApiKeyController {
   ) {
     const { key, apiKey } = await this.service.generate(user.organizationId, {
       name: dto.name,
+      scopeType: dto.scopeType,
+      scopes: dto.scopes,
       siteId: dto.siteId,
       permissions: dto.permissions,
       websocketEnabled: dto.websocketEnabled,
       expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : undefined,
     });
-    // key is shown once — include in response, never stored in plaintext
+    // key is shown once — include in response, never stored in plaintext after this point
     return { ...apiKey, key };
   }
 

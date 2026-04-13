@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiKey } from './api-key.entity';
+import { ApiKeyScope } from './api-key-scope.entity';
 import { ApiKeyService } from './api-key.service';
 import { ApiKeyController } from './api-key.controller';
 import { KeyExpiryCron } from './key-expiry.cron';
@@ -9,7 +10,7 @@ import { WebhooksModule } from '../webhooks/webhooks.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ApiKey]),
+    TypeOrmModule.forFeature([ApiKey, ApiKeyScope]),
     CacheRedisModule,
     forwardRef(() => WebhooksModule),
   ],

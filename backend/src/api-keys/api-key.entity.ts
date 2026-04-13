@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { ApiHideProperty } from '@nestjs/swagger';
 
 @Entity('api_keys')
 export class ApiKey {
@@ -15,8 +16,17 @@ export class ApiKey {
   @Column({ name: 'organization_id' })
   organizationId!: string;
 
+  /** Legacy single-site scope — used when scopeType = 'SITES' with no rows in api_key_scopes */
   @Column({ name: 'site_id', nullable: true, type: 'uuid' })
   siteId?: string;
+
+  /** GLOBAL = all orgs/sites | ORGS = listed orgs (all their sites) | SITES = specific sites */
+  @Column({ name: 'scope_type', length: 10, default: 'SITES' })
+  scopeType!: string;
+
+  /** Populated by ApiKeyService.validate() / findByOrg() — not a DB column */
+  @ApiHideProperty()
+  scopes?: Array<{ orgId: string; siteId?: string }>;
 
   @Column({ name: 'name' })
   name!: string;

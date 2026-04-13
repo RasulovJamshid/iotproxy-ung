@@ -1,17 +1,28 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { encode as base58Encode } from 'bs58';
 import { Redis } from 'ioredis';
 import { ApiKey } from './api-key.entity';
+import { ApiKeyScope } from './api-key-scope.entity';
 
 const CACHE_TTL = 60;       // seconds
 const CACHE_PREFIX = 'apikey:';
 const BCRYPT_ROUNDS = 10;
 
+export interface ScopeEntry {
+  orgId: string;
+  siteId?: string;
+}
+
 export interface GenerateKeyOptions {
+  /** GLOBAL = all orgs/sites | ORGS = listed orgs | SITES = specific sites */
+  scopeType?: string;
+  /** Scope rows to insert. Omit for GLOBAL. */
+  scopes?: ScopeEntry[];
+  /** Legacy single-site (used when scopeType omitted / 'SITES' with no scopes array) */
   siteId?: string;
   permissions: string[];
   websocketEnabled?: boolean;
@@ -23,7 +34,9 @@ export interface GenerateKeyOptions {
 export class ApiKeyService {
   constructor(
     @InjectRepository(ApiKey) private repo: Repository<ApiKey>,
+    @InjectRepository(ApiKeyScope) private scopeRepo: Repository<ApiKeyScope>,
     @Inject('CACHE_REDIS') private redis: Redis,
+    private dataSource: DataSource,
   ) {}
 
   // ── Key generation ───────────────────────────────────────────────────────
@@ -32,24 +45,37 @@ export class ApiKeyService {
     organizationId: string,
     opts: GenerateKeyOptions,
   ): Promise<{ key: string; apiKey: ApiKey }> {
-    // base58 encoding via bs58 (Buffer.toString('base58') does not exist)
     const raw = 'iot_' + base58Encode(randomBytes(32));
     const hash = await bcrypt.hash(raw, BCRYPT_ROUNDS);
     const prefix = raw.slice(0, 12);
 
-    const apiKey = this.repo.create({
-      keyHash: hash,
-      prefix,
-      organizationId,
-      siteId: opts.siteId,
-      permissions: opts.permissions,
-      websocketEnabled: opts.websocketEnabled ?? true,
-      expiresAt: opts.expiresAt,
-      name: opts.name,
+    const scopeType = opts.scopeType ?? 'SITES';
+
+    const apiKey = await this.dataSource.transaction(async (em) => {
+      const key = em.getRepository(ApiKey).create({
+        keyHash: hash,
+        prefix,
+        organizationId,
+        siteId: opts.siteId,
+        scopeType,
+        permissions: opts.permissions,
+        websocketEnabled: opts.websocketEnabled ?? true,
+        expiresAt: opts.expiresAt,
+        name: opts.name,
+      });
+      await em.getRepository(ApiKey).save(key);
+
+      if (scopeType !== 'GLOBAL' && opts.scopes?.length) {
+        const rows = opts.scopes.map((s) =>
+          em.getRepository(ApiKeyScope).create({ apiKeyId: key.id, orgId: s.orgId, siteId: s.siteId }),
+        );
+        await em.getRepository(ApiKeyScope).save(rows);
+        key.scopes = opts.scopes;
+      }
+
+      return key;
     });
 
-    await this.repo.save(apiKey);
-    // Raw key returned once only — never stored in plaintext after this point
     return { key: raw, apiKey };
   }
 
@@ -63,16 +89,14 @@ export class ApiKeyService {
     if (cached === 'invalid') return null;
 
     if (cached) {
-      // Cache stores hash alongside metadata so we can always verify the full key.
-      // This prevents a prefix-collision from granting access.
-      const parsed = JSON.parse(cached) as { hash: string } & Partial<ApiKey>;
+      const parsed = JSON.parse(cached) as { hash: string; scopes?: ScopeEntry[] } & Partial<ApiKey>;
       const valid = await bcrypt.compare(rawKey, parsed.hash);
       if (!valid) return null;
       const { hash: _, ...metadata } = parsed;
       return metadata as ApiKey;
     }
 
-    // Cache miss — query DB by prefix, then bcrypt-compare each candidate
+    // Cache miss — query DB
     const candidates = await this.repo.find({ where: { prefix } });
 
     for (const candidate of candidates) {
@@ -83,8 +107,13 @@ export class ApiKeyService {
         return null;
       }
 
+      // Load scopes and attach
+      if (candidate.scopeType !== 'GLOBAL') {
+        const scopeRows = await this.scopeRepo.find({ where: { apiKeyId: candidate.id } });
+        candidate.scopes = scopeRows.map((r) => ({ orgId: r.orgId, siteId: r.siteId }));
+      }
+
       await this.cacheValid(cacheKey, candidate);
-      // Fire-and-forget — do not block the auth path
       void this.repo.update(candidate.id, { lastUsedAt: new Date() });
       return candidate;
     }
@@ -103,7 +132,6 @@ export class ApiKeyService {
     const key = await this.repo.findOne({ where: { id, organizationId } });
     if (!key) throw new NotFoundException('API key not found');
     await this.repo.update(id, data);
-    // Invalidate cache so updated permissions/expiry take effect immediately
     await this.cacheInvalid(CACHE_PREFIX + key.prefix);
     return this.repo.findOne({ where: { id } }) as Promise<ApiKey>;
   }
@@ -114,11 +142,10 @@ export class ApiKeyService {
     const key = await this.repo.findOne({ where: { id, organizationId } });
     if (!key) throw new NotFoundException('API key not found');
     await this.repo.update(id, { revokedAt: new Date() });
-    // Immediately invalidate cache — 5-min TTL so retries fail fast too
     await this.redis.setex(CACHE_PREFIX + key.prefix, 300, 'invalid');
   }
 
-  // ── Hard delete ───────────────────────────────────────────────────────────
+  // ── Hard delete ──────────────────────────────────────────────────────────
 
   async deleteKey(id: string, organizationId: string): Promise<void> {
     const key = await this.repo.findOne({ where: { id, organizationId } });
@@ -128,7 +155,28 @@ export class ApiKeyService {
   }
 
   async findByOrg(organizationId: string): Promise<ApiKey[]> {
-    return this.repo.find({ where: { organizationId } });
+    const keys = await this.repo.find({ where: { organizationId } });
+    if (!keys.length) return keys;
+
+    // Load scopes for all keys in one query
+    const keyIds = keys.map((k) => k.id);
+    const allScopes = await this.scopeRepo
+      .createQueryBuilder('s')
+      .where('s.apiKeyId IN (:...ids)', { ids: keyIds })
+      .getMany();
+
+    const scopeMap = new Map<string, ScopeEntry[]>();
+    for (const s of allScopes) {
+      const list = scopeMap.get(s.apiKeyId) ?? [];
+      list.push({ orgId: s.orgId, siteId: s.siteId });
+      scopeMap.set(s.apiKeyId, list);
+    }
+
+    for (const key of keys) {
+      key.scopes = scopeMap.get(key.id) ?? [];
+    }
+
+    return keys;
   }
 
   async findOne(id: string): Promise<ApiKey | null> {

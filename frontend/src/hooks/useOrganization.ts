@@ -65,6 +65,50 @@ export function useUpdateUser() {
   });
 }
 
+export function useUserMemberships(userId: string | null) {
+  return useQuery<Array<{ org: { id: string; name: string; slug: string }; role: string }>>({
+    queryKey: ['user-memberships', userId],
+    queryFn: async () => (await api.get(`/organizations/members/${userId}`)).data,
+    enabled: !!userId,
+  });
+}
+
+export function useAddMembership() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, orgId, role }: { userId: string; orgId: string; role: string }) =>
+      api.post(`/organizations/${orgId}/members`, { userId, role }).then((r) => r.data),
+    onSuccess: (_data, { userId }) => {
+      qc.invalidateQueries({ queryKey: ['user-memberships', userId] });
+      qc.invalidateQueries({ queryKey: ['org-users'] });
+    },
+  });
+}
+
+export function useUpdateMembership() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, orgId, role }: { userId: string; orgId: string; role: string }) =>
+      api.patch(`/organizations/${orgId}/members/${userId}`, { role }).then((r) => r.data),
+    onSuccess: (_data, { userId }) => {
+      qc.invalidateQueries({ queryKey: ['user-memberships', userId] });
+      qc.invalidateQueries({ queryKey: ['org-users'] });
+    },
+  });
+}
+
+export function useRemoveMembership() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, orgId }: { userId: string; orgId: string }) =>
+      api.delete(`/organizations/${orgId}/members/${userId}`),
+    onSuccess: (_data, { userId }) => {
+      qc.invalidateQueries({ queryKey: ['user-memberships', userId] });
+      qc.invalidateQueries({ queryKey: ['org-users'] });
+    },
+  });
+}
+
 export function useCreateOrganization() {
   const qc = useQueryClient();
   return useMutation({

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { api } from '../api/client';
 import { disconnectSocket } from '../api/ws-client';
+import { queryClient } from '../App';
 
 interface UserOrg {
   id: string;
@@ -70,6 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const switchOrg = useCallback(async (orgId: string) => {
     const { data } = await api.post('/auth/switch-org', { orgId });
     await applyTokens(data.accessToken, data.refreshToken);
+    // Flush all cached queries so every page refetches with the new org token.
+    queryClient.invalidateQueries();
   }, [applyTokens]);
 
   const logout = useCallback(() => {

@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, UseGuards, UnauthorizedException,
+  Controller, Get, Post, Patch, Body, Param, Query, UseGuards, UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { FlexibleAuthGuard } from '../auth/guards/flexible-auth.guard';
@@ -21,17 +21,23 @@ export class SitesController {
 
   @Get()
   async findAll(
+    @Query('orgId') orgIdParam?: string,
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {
-    const organizationId = user?.organizationId ?? org?.organizationId;
+    let organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
-    
+
+    // SYSTEM_ADMIN may request sites for any org via ?orgId=
+    if (orgIdParam && user?.role === 'SYSTEM_ADMIN') {
+      organizationId = orgIdParam;
+    }
+
     // API key must have 'read', 'query', or 'admin' permission
     if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
       throw new UnauthorizedException('API key lacks read permission');
     }
-    
+
     // API key scoped to a single site — return only that site
     if (org?.siteId) {
       const site = await this.service.findOne(org.siteId, organizationId);

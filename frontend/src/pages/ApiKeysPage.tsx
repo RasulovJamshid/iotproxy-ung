@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApiKeys, useCreateApiKey, useUpdateApiKey, useRevokeApiKey, useDeleteApiKey } from '../hooks/useApiKeys';
-import { useSites } from '../hooks/useSites';
+import { useSites, useOrgSites } from '../hooks/useSites';
+import { useAllOrganizations } from '../hooks/useOrganization';
+import { useAuth } from '../contexts/AuthContext';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -12,9 +14,194 @@ import type { ApiKey } from '../types';
 
 const PERMISSIONS = ['ingest', 'read', 'admin'];
 
+// ── Scope builder ────────────────────────────────────────────────────────────
+
+interface ScopePair { orgId: string; siteId?: string }
+
+interface ScopeBuilderProps {
+  isSysAdmin: boolean;
+  myOrgId: string;
+  scopeType: string;
+  onScopeTypeChange: (t: string) => void;
+  scopes: ScopePair[];
+  onScopesChange: (s: ScopePair[]) => void;
+}
+
+function ScopeBuilder({ isSysAdmin, myOrgId, scopeType, onScopeTypeChange, scopes, onScopesChange }: ScopeBuilderProps) {
+  const { data: allOrgs } = useAllOrganizations();
+  const { data: ownSites } = useSites();
+
+  const [pickerOrgId, setPickerOrgId] = useState('');
+  const [pickerSiteId, setPickerSiteId] = useState('');
+
+  // For SYSTEM_ADMIN: load sites for the selected org dynamically
+  const { data: orgSites } = useOrgSites(isSysAdmin ? pickerOrgId : undefined);
+  const sitesForPicker = isSysAdmin ? (orgSites ?? []) : (ownSites ?? []);
+
+  const removeScope = (idx: number) => onScopesChange(scopes.filter((_, i) => i !== idx));
+
+  const addScope = () => {
+    // For regular ADMIN, org is always their own org
+    const effectiveOrgId = isSysAdmin ? pickerOrgId : myOrgId;
+    if (!effectiveOrgId) return;
+    const entry: ScopePair = { orgId: effectiveOrgId, siteId: pickerSiteId || undefined };
+    // Avoid duplicates
+    const already = scopes.some(
+      (s) => s.orgId === entry.orgId && (s.siteId ?? '') === (entry.siteId ?? ''),
+    );
+    if (!already) onScopesChange([...scopes, entry]);
+    setPickerOrgId('');
+    setPickerSiteId('');
+  };
+
+  const getOrgName = (id: string) => allOrgs?.find((o) => o.id === id)?.name ?? id;
+  const getSiteName = (id: string) => ownSites?.find((s) => s.id === id)?.name ?? id;
+
+  // Options depend on role:
+  // SYSTEM_ADMIN: GLOBAL | ORGS | SITES
+  // ADMIN/others: ORGS (their org only, rendered as "All sites") | SITES
+  const scopeOptions = isSysAdmin
+    ? [
+        { value: 'GLOBAL', label: 'Global — all organizations and their sites' },
+        { value: 'ORGS', label: 'Organizations — all sites within selected organizations' },
+        { value: 'SITES', label: 'Sites — specific sites within selected organizations' },
+      ]
+    : [
+        { value: 'ORGS', label: 'All sites in this organization' },
+        { value: 'SITES', label: 'Specific sites in this organization' },
+      ];
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        {scopeOptions.map((opt) => (
+          <label key={opt.value} className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="scopeType"
+              value={opt.value}
+              checked={scopeType === opt.value}
+              onChange={() => { onScopeTypeChange(opt.value); onScopesChange([]); }}
+              className="mt-0.5"
+            />
+            <span className="text-sm text-slate-700 dark:text-slate-200">{opt.label}</span>
+          </label>
+        ))}
+      </div>
+
+      {/* Picker for ORGS or SITES */}
+      {(scopeType === 'ORGS' || scopeType === 'SITES') && (
+        <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 space-y-2">
+          {/* Already-added entries */}
+          {scopes.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {scopes.map((s, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                >
+                  {isSysAdmin ? getOrgName(s.orgId) : ''}
+                  {s.siteId ? (isSysAdmin ? ' / ' : '') + getSiteName(s.siteId) : (scopeType === 'ORGS' ? ' (all sites)' : '')}
+                  <button
+                    type="button"
+                    onClick={() => removeScope(i)}
+                    className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Picker row */}
+          <div className="flex gap-2 items-end">
+            {isSysAdmin && (
+              <div className="flex-1">
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Organization</label>
+                <select
+                  className="input text-sm py-1.5"
+                  value={pickerOrgId}
+                  onChange={(e) => { setPickerOrgId(e.target.value); setPickerSiteId(''); }}
+                >
+                  <option value="">Select org…</option>
+                  {allOrgs?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            {scopeType === 'SITES' && (
+              <div className="flex-1">
+                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Site</label>
+                <select
+                  className="input text-sm py-1.5"
+                  value={pickerSiteId}
+                  onChange={(e) => setPickerSiteId(e.target.value)}
+                  disabled={isSysAdmin && !pickerOrgId}
+                >
+                  <option value="">Select site…</option>
+                  {sitesForPicker.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={addScope}
+              disabled={isSysAdmin ? !pickerOrgId : scopeType === 'SITES' && !pickerSiteId}
+              className="btn-secondary text-sm py-1.5 px-3 whitespace-nowrap"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Scope summary (for table cell) ───────────────────────────────────────────
+
+function ScopeSummary({ apiKey, sites, orgs }: { apiKey: ApiKey; sites: any[]; orgs: any[] }) {
+  if (apiKey.scopeType === 'GLOBAL') return <span className="tag">Global</span>;
+
+  if (apiKey.scopes?.length) {
+    const orgOnly = apiKey.scopes.filter((s) => !s.siteId);
+    const siteOnly = apiKey.scopes.filter((s) => s.siteId);
+
+    if (apiKey.scopeType === 'ORGS') {
+      if (orgOnly.length === 1) {
+        const name = orgs.find((o) => o.id === orgOnly[0].orgId)?.name ?? orgOnly[0].orgId;
+        return <span>{name} (all sites)</span>;
+      }
+      return <span>{orgOnly.length} orgs</span>;
+    }
+
+    if (siteOnly.length === 1) {
+      const name = sites.find((s) => s.id === siteOnly[0].siteId)?.name ?? siteOnly[0].siteId;
+      return <span>{name}</span>;
+    }
+    return <span>{siteOnly.length} sites</span>;
+  }
+
+  // Legacy
+  if (apiKey.siteId) {
+    const site = sites.find((s) => s.id === apiKey.siteId);
+    return <span>{site?.name ?? apiKey.siteId}</span>;
+  }
+
+  return <span>All sites</span>;
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
+
 export default function ApiKeysPage() {
+  const { user } = useAuth();
+  const isSysAdmin = user?.role === 'SYSTEM_ADMIN';
+
   const { data: keys, isLoading } = useApiKeys();
-  const { data: sites } = useSites();
+  const { data: sites = [] } = useSites();
+  const { data: orgs = [] } = useAllOrganizations();
   const create = useCreateApiKey();
   const update = useUpdateApiKey();
   const revoke = useRevokeApiKey();
@@ -24,7 +211,8 @@ export default function ApiKeysPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [siteId, setSiteId] = useState('');
+  const [scopeType, setScopeType] = useState('ORGS');
+  const [scopes, setScopes] = useState<ScopePair[]>([]);
   const [perms, setPerms] = useState<string[]>(['ingest']);
   const [websocketEnabled, setWebsocketEnabled] = useState(true);
   const [expiresAt, setExpiresAt] = useState('');
@@ -43,18 +231,33 @@ export default function ApiKeysPage() {
   const togglePerm = (p: string, current: string[], setter: (v: string[]) => void) =>
     setter(current.includes(p) ? current.filter((x) => x !== p) : [...current, p]);
 
+  const resetCreate = () => {
+    setName(''); setScopeType('ORGS'); setScopes([]); setPerms(['ingest']); setWebsocketEnabled(true); setExpiresAt('');
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await create.mutateAsync({
+
+    // Build payload based on scope type
+    let payload: Parameters<typeof create.mutateAsync>[0] = {
       name,
-      siteId: siteId || undefined,
+      scopeType,
       permissions: perms,
       websocketEnabled,
       expiresAt: expiresAt || undefined,
-    });
+    };
+
+    if (scopeType === 'GLOBAL') {
+      // no scopes needed
+    } else if (scopes.length > 0) {
+      payload.scopes = scopes;
+    }
+    // If ORGS/SITES with no scopes picked by non-sysadmin, fallback: org-wide via legacy siteId=undefined
+
+    const result = await create.mutateAsync(payload);
     setCreateOpen(false);
     setNewKey(result.key!);
-    setName(''); setSiteId(''); setPerms(['ingest']); setWebsocketEnabled(true); setExpiresAt('');
+    resetCreate();
   };
 
   const openEdit = (key: ApiKey) => {
@@ -109,7 +312,7 @@ export default function ApiKeysPage() {
                 <th className="table-th">Prefix</th>
                 <th className="table-th">Permissions</th>
                 <th className="table-th">WebSocket</th>
-                <th className="table-th">Site</th>
+                <th className="table-th">Scope</th>
                 <th className="table-th">Expires</th>
                 <th className="table-th">Last Used</th>
                 <th className="table-th">Status</th>
@@ -118,7 +321,6 @@ export default function ApiKeysPage() {
             </thead>
             <tbody>
               {pg.paged.map((key) => {
-                const site = sites?.find((s) => s.id === key.siteId);
                 const isRevoked = !!key.revokedAt;
                 return (
                   <tr key={key.id} className={`table-row ${isRevoked ? 'opacity-50' : ''}`}>
@@ -136,7 +338,9 @@ export default function ApiKeysPage() {
                         ? <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
                         : <span className="text-slate-400 text-sm">✗</span>}
                     </td>
-                    <td className="table-td text-slate-400">{site?.name ?? 'All sites'}</td>
+                    <td className="table-td text-slate-500 dark:text-slate-400 text-sm">
+                      <ScopeSummary apiKey={key} sites={sites} orgs={orgs} />
+                    </td>
                     <td className="table-td text-slate-400">
                       {key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : '—'}
                     </td>
@@ -188,19 +392,27 @@ export default function ApiKeysPage() {
       )}
 
       {/* Create Modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Generate API Key">
+      <Modal open={createOpen} onClose={() => { setCreateOpen(false); resetCreate(); }} title="Generate API Key">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Name <span className="text-red-500">*</span></label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
+              Name <span className="text-red-500">*</span>
+            </label>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Production Device Gateway" />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Site scope (optional)</label>
-            <select className="input" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-              <option value="">All sites in this organization</option>
-              {sites?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Scope</label>
+            <ScopeBuilder
+              isSysAdmin={isSysAdmin}
+              myOrgId={user?.organizationId ?? ''}
+              scopeType={scopeType}
+              onScopeTypeChange={setScopeType}
+              scopes={scopes}
+              onScopesChange={setScopes}
+            />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">Permissions</label>
             <div className="flex gap-3">
@@ -212,18 +424,21 @@ export default function ApiKeysPage() {
               ))}
             </div>
           </div>
+
           <div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={websocketEnabled} onChange={(e) => setWebsocketEnabled(e.target.checked)} className="rounded border-slate-300 text-blue-600" />
               <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Enable WebSocket access</span>
             </label>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Expires at (optional)</label>
             <input className="input" type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
           </div>
+
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setCreateOpen(false)} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={() => { setCreateOpen(false); resetCreate(); }} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={create.isPending} className="btn-primary">
               {create.isPending ? 'Generating…' : 'Generate'}
             </button>
@@ -231,7 +446,7 @@ export default function ApiKeysPage() {
         </form>
       </Modal>
 
-      {/* Edit Modal */}
+      {/* Edit Modal — scope is not editable after creation; recreate to change scope */}
       <Modal open={!!editKey} onClose={() => setEditKey(null)} title="Edit API Key">
         <form onSubmit={handleEdit} className="space-y-4">
           <div>
@@ -259,6 +474,13 @@ export default function ApiKeysPage() {
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Expires at (optional)</label>
             <input className="input" type="datetime-local" value={editExpiresAt} onChange={(e) => setEditExpiresAt(e.target.value)} />
           </div>
+          {editKey && (
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Scope: <strong>{editKey.scopeType ?? 'SITES'}</strong>
+              {editKey.scopes?.length ? ` (${editKey.scopes.length} entries)` : editKey.siteId ? ' (single site)' : ' (all sites)'}
+              {' '}— to change scope, delete and recreate this key.
+            </p>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setEditKey(null)} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={update.isPending} className="btn-primary">
