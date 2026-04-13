@@ -1,0 +1,32 @@
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# Copy root workspace manifest
+COPY package.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+
+# Copy workspace packages
+COPY shared/package.json ./shared/
+COPY shared/tsconfig.json ./shared/
+COPY shared/src ./shared/src/
+
+COPY backend/package.json ./backend/
+COPY backend/tsconfig.json ./backend/
+COPY backend/nest-cli.json ./backend/
+
+# Install all workspace dependencies from root
+RUN npm install --workspaces --include-workspace-root
+
+# Build shared package first (backend imports from it)
+WORKDIR /app/shared
+RUN npm run build
+
+WORKDIR /app/backend
+
+# Copy backend source (mounted as volume in dev, copied in prod)
+COPY backend/src ./src/
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]

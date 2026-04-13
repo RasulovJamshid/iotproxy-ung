@@ -1,0 +1,20 @@
+{
+  "name": "iotproxy",
+  "private": true,
+  "workspaces": ["backend", "frontend", "shared"],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format:check": "prettier --check .",
+    "format:write": "prettier --write .",
+    "migrate": "npm run migrate -w @iotproxy/backend",
+    "seed": "npm run seed -w @iotproxy/backend"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  }
+}

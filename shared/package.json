@@ -1,0 +1,15 @@
+{
+  "name": "@iotproxy/shared",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "test": "echo \"No shared tests configured yet\""
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

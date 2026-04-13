@@ -1,0 +1,29 @@
+FROM node:20-alpine
+WORKDIR /app
+
+COPY package.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+
+COPY shared/package.json ./shared/
+COPY shared/tsconfig.json ./shared/
+COPY shared/src ./shared/src/
+
+COPY frontend/package.json ./frontend/
+
+RUN npm install --workspaces --include-workspace-root
+
+WORKDIR /app/shared
+RUN npm run build
+
+WORKDIR /app/frontend
+COPY frontend/src ./src/
+COPY frontend/index.html ./
+COPY frontend/vite.config.ts ./
+COPY frontend/tsconfig.json ./
+COPY frontend/tailwind.config.js ./
+COPY frontend/postcss.config.js ./
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev"]

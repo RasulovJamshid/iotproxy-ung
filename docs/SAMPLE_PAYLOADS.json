@@ -1,0 +1,379 @@
+{
+  "iot_sensor_simple": {
+    "description": "Simple IoT sensor with flat structure",
+    "mqtt_topic": "org/{orgId}/site/{siteId}",
+    "payload": {
+      "timestamp": "2026-04-09T14:30:00Z",
+      "temp": 22.5,
+      "hum": 65,
+      "pressure": 1013.25,
+      "battery": 87
+    },
+    "inbound_mapping": {
+      "timestamp": "$.timestamp",
+      "temperature": "$.temp",
+      "humidity": "$.hum",
+      "pressure_hpa": "$.pressure",
+      "battery_percent": "$.battery"
+    }
+  },
+
+  "iot_sensor_nested": {
+    "description": "IoT sensor with nested structure",
+    "mqtt_topic": "org/{orgId}/site/{siteId}",
+    "payload": {
+      "device": {
+        "id": "sensor-001",
+        "location": "warehouse-a",
+        "firmware": "v2.1.3"
+      },
+      "readings": {
+        "environmental": {
+          "temperature_c": 18.5,
+          "humidity_pct": 45,
+          "pressure_hpa": 1015.2
+        },
+        "power": {
+          "voltage": 3.3,
+          "current_ma": 120,
+          "battery_pct": 92
+        }
+      },
+      "meta": {
+        "timestamp": "2026-04-09T14:30:00Z",
+        "signal_strength": -65,
+        "uptime_sec": 86400
+      }
+    },
+    "inbound_mapping": {
+      "timestamp": "$.meta.timestamp",
+      "device_id": "$.device.id",
+      "location": "$.device.location",
+      "temperature": "$.readings.environmental.temperature_c",
+      "humidity": "$.readings.environmental.humidity_pct",
+      "pressure": "$.readings.environmental.pressure_hpa",
+      "voltage": "$.readings.power.voltage",
+      "current_ma": "$.readings.power.current_ma",
+      "battery": "$.readings.power.battery_pct",
+      "signal_rssi": "$.meta.signal_strength"
+    }
+  },
+
+  "daily_sales_report": {
+    "description": "Daily sales metrics from POS system",
+    "api_endpoint": "https://pos.example.com/api/sales/today",
+    "response": {
+      "report_date": "2026-04-09",
+      "store_id": "STORE-042",
+      "sales": {
+        "total_transactions": 342,
+        "total_revenue_usd": 12450.75,
+        "avg_transaction_value": 36.40,
+        "cash_transactions": 89,
+        "card_transactions": 253
+      },
+      "inventory": {
+        "items_sold": 856,
+        "returns": 12,
+        "exchanges": 5
+      },
+      "traffic": {
+        "foot_traffic": 1205,
+        "conversion_rate": 0.284
+      }
+    },
+    "pull_config": {
+      "enabled": true,
+      "url": "https://pos.example.com/api/sales/today",
+      "method": "GET",
+      "intervalSeconds": 86400,
+      "headers": {
+        "X-API-Key": "${POS_API_KEY}"
+      },
+      "authType": "apiKey",
+      "authConfig": {
+        "apiKey": "${POS_API_KEY}",
+        "headerName": "X-API-Key"
+      },
+      "responseMapping": {
+        "timestamp": "$.report_date",
+        "store_id": "$.store_id",
+        "transactions": "$.sales.total_transactions",
+        "revenue": "$.sales.total_revenue_usd",
+        "avg_transaction": "$.sales.avg_transaction_value",
+        "items_sold": "$.inventory.items_sold",
+        "returns": "$.inventory.returns",
+        "foot_traffic": "$.traffic.foot_traffic",
+        "conversion_rate": "$.traffic.conversion_rate"
+      }
+    }
+  },
+
+  "weather_api": {
+    "description": "Weather data from external API",
+    "api_endpoint": "https://api.weather.com/v1/current",
+    "response": {
+      "observation_time": "2026-04-09T14:30:00Z",
+      "location": {
+        "lat": 40.7128,
+        "lon": -74.0060,
+        "city": "New York"
+      },
+      "temperature": 18.5,
+      "humidity": 62,
+      "pressure": 1015.3,
+      "wind": {
+        "speed": 12.5,
+        "direction": 180,
+        "gust": 18.2
+      },
+      "weather": {
+        "description": "Partly Cloudy",
+        "code": 801
+      },
+      "visibility": 10000,
+      "uv_index": 5
+    },
+    "pull_config": {
+      "enabled": true,
+      "url": "https://api.weather.com/v1/current",
+      "method": "GET",
+      "intervalSeconds": 1800,
+      "headers": {
+        "Authorization": "Bearer ${WEATHER_API_KEY}"
+      },
+      "queryParams": {
+        "location": "40.7128,-74.0060",
+        "units": "metric"
+      },
+      "authType": "bearer",
+      "authConfig": {
+        "token": "${WEATHER_API_KEY}"
+      },
+      "responseMapping": {
+        "timestamp": "$.observation_time",
+        "temperature": "$.temperature",
+        "humidity": "$.humidity",
+        "pressure": "$.pressure",
+        "wind_speed": "$.wind.speed",
+        "wind_direction": "$.wind.direction",
+        "conditions": "$.weather.description",
+        "visibility": "$.visibility",
+        "uv_index": "$.uv_index"
+      }
+    }
+  },
+
+  "manufacturing_line": {
+    "description": "Manufacturing line metrics",
+    "mqtt_topic": "org/{orgId}/site/{siteId}",
+    "payload": {
+      "timestamp": "2026-04-09T14:30:00Z",
+      "machine": {
+        "id": "line-3-press-1",
+        "status": "running",
+        "mode": "auto"
+      },
+      "production": {
+        "units_produced": 1250,
+        "units_rejected": 8,
+        "cycle_time_sec": 12.5,
+        "efficiency_pct": 94.2
+      },
+      "sensors": {
+        "temperature_c": 65.5,
+        "vibration_mm_s": 2.3,
+        "pressure_bar": 8.5,
+        "power_kw": 15.2
+      },
+      "quality": {
+        "defect_rate": 0.0064,
+        "last_inspection": "2026-04-09T14:00:00Z"
+      }
+    },
+    "inbound_mapping": {
+      "timestamp": "$.timestamp",
+      "machine_id": "$.machine.id",
+      "status": "$.machine.status",
+      "units_produced": "$.production.units_produced",
+      "units_rejected": "$.production.units_rejected",
+      "cycle_time": "$.production.cycle_time_sec",
+      "efficiency": "$.production.efficiency_pct",
+      "temperature": "$.sensors.temperature_c",
+      "vibration": "$.sensors.vibration_mm_s",
+      "pressure": "$.sensors.pressure_bar",
+      "power_kw": "$.sensors.power_kw",
+      "defect_rate": "$.quality.defect_rate"
+    }
+  },
+
+  "api_monitoring": {
+    "description": "API gateway metrics",
+    "api_endpoint": "https://monitoring.example.com/api/metrics",
+    "request_body": {
+      "service": "api-gateway",
+      "environment": "production",
+      "metrics": ["requests", "errors", "latency"]
+    },
+    "response": {
+      "timestamp": "2026-04-09T14:30:00Z",
+      "service": "api-gateway",
+      "metrics": {
+        "requests": {
+          "total": 125420,
+          "rate": 348.4,
+          "by_method": {
+            "GET": 89234,
+            "POST": 28156,
+            "PUT": 5230,
+            "DELETE": 2800
+          }
+        },
+        "errors": {
+          "count": 342,
+          "rate": 0.95,
+          "by_code": {
+            "400": 120,
+            "401": 45,
+            "404": 89,
+            "500": 88
+          }
+        },
+        "latency": {
+          "avg": 45.2,
+          "p50": 32.1,
+          "p95": 125.6,
+          "p99": 342.8
+        }
+      }
+    },
+    "pull_config": {
+      "enabled": true,
+      "url": "https://monitoring.example.com/api/metrics",
+      "method": "POST",
+      "intervalSeconds": 60,
+      "headers": {
+        "Authorization": "Bearer ${MONITOR_TOKEN}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "service": "api-gateway",
+        "environment": "production",
+        "metrics": ["requests", "errors", "latency"]
+      },
+      "authType": "bearer",
+      "authConfig": {
+        "token": "${MONITOR_TOKEN}"
+      },
+      "responseMapping": {
+        "timestamp": "$.timestamp",
+        "total_requests": "$.metrics.requests.total",
+        "requests_per_sec": "$.metrics.requests.rate",
+        "error_count": "$.metrics.errors.count",
+        "error_rate": "$.metrics.errors.rate",
+        "avg_latency_ms": "$.metrics.latency.avg",
+        "p95_latency_ms": "$.metrics.latency.p95",
+        "p99_latency_ms": "$.metrics.latency.p99"
+      }
+    }
+  },
+
+  "multi_sensor_array": {
+    "description": "Multiple sensors in single payload",
+    "mqtt_topic": "org/{orgId}/site/{siteId}",
+    "payload": {
+      "gateway_id": "gw-warehouse-001",
+      "timestamp": "2026-04-09T14:30:00Z",
+      "sensors": [
+        {
+          "id": "temp-zone-a",
+          "type": "temperature",
+          "value": 22.5,
+          "unit": "celsius",
+          "zone": "A"
+        },
+        {
+          "id": "temp-zone-b",
+          "type": "temperature",
+          "value": 21.8,
+          "unit": "celsius",
+          "zone": "B"
+        },
+        {
+          "id": "hum-zone-a",
+          "type": "humidity",
+          "value": 65,
+          "unit": "percent",
+          "zone": "A"
+        },
+        {
+          "id": "motion-entrance",
+          "type": "motion",
+          "value": 1,
+          "unit": "boolean",
+          "zone": "entrance"
+        }
+      ]
+    },
+    "inbound_mapping": {
+      "timestamp": "$.timestamp",
+      "gateway_id": "$.gateway_id",
+      "sensor_ids": "$.sensors[*].id",
+      "sensor_types": "$.sensors[*].type",
+      "values": "$.sensors[*].value",
+      "zones": "$.sensors[*].zone"
+    }
+  },
+
+  "stock_market_data": {
+    "description": "Stock price monitoring",
+    "api_endpoint": "https://api.stockmarket.com/v2/quote",
+    "response": {
+      "timestamp": "2026-04-09T14:30:00Z",
+      "symbol": "AAPL",
+      "price": 178.45,
+      "volume": 52340000,
+      "change": 2.35,
+      "change_percent": 1.33,
+      "day": {
+        "open": 176.10,
+        "high": 179.20,
+        "low": 175.80,
+        "close": 178.45
+      },
+      "market": {
+        "status": "open",
+        "session": "regular"
+      }
+    },
+    "pull_config": {
+      "enabled": true,
+      "url": "https://api.stockmarket.com/v2/quote",
+      "method": "GET",
+      "intervalSeconds": 300,
+      "headers": {
+        "X-API-Key": "${STOCK_API_KEY}"
+      },
+      "queryParams": {
+        "symbol": "AAPL",
+        "interval": "1min"
+      },
+      "authType": "apiKey",
+      "authConfig": {
+        "apiKey": "${STOCK_API_KEY}",
+        "headerName": "X-API-Key"
+      },
+      "responseMapping": {
+        "timestamp": "$.timestamp",
+        "symbol": "$.symbol",
+        "price": "$.price",
+        "volume": "$.volume",
+        "change": "$.change",
+        "change_percent": "$.change_percent",
+        "open": "$.day.open",
+        "high": "$.day.high",
+        "low": "$.day.low"
+      }
+    }
+  }
+}
