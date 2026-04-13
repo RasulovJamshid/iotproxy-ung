@@ -16,7 +16,6 @@ export function useAlertEvents(sensorId?: string) {
       const params = sensorId ? { sensorId } : {};
       return (await api.get('/alerts/events', { params })).data;
     },
-    enabled: !!sensorId,
     refetchInterval: 30_000,
   });
 }
@@ -44,5 +43,24 @@ export function useDeleteAlertRule() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/alerts/rules/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alert-rules'] }),
+  });
+}
+
+export function useUpdateAlertEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, state }: { id: string; state: string }) =>
+      api.patch(`/alerts/events/${id}`, { state }).then((r) => r.data),
+    onSuccess: (data, variables) => {
+      qc.invalidateQueries({ queryKey: ['alert-events'] });
+    },
+  });
+}
+
+export function useDeleteAlertEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/alerts/events/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alert-events'] }),
   });
 }

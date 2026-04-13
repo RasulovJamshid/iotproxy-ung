@@ -6,6 +6,7 @@ export interface Organization {
   rawRetentionDays?: number;
   isActive: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface OrgUser {

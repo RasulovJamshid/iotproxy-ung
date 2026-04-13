@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Sensor } from './sensor.entity';
 import { SensorConfig } from './sensor-config.entity';
 import { SensorConfigVersion } from './sensor-config-version.entity';
 import { VirtualSensor } from './virtual-sensor.entity';
+import { Site } from '../sites/site.entity';
 import { ERROR_CODES } from '@iotproxy/shared';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class SensorsService {
     @InjectRepository(SensorConfig) private configs: Repository<SensorConfig>,
     @InjectRepository(SensorConfigVersion) private versions: Repository<SensorConfigVersion>,
     @InjectRepository(VirtualSensor) private virtuals: Repository<VirtualSensor>,
+    @InjectRepository(Site) private sites: Repository<Site>,
     private dataSource: DataSource,
   ) {}
 
@@ -53,6 +55,32 @@ export class SensorsService {
   async hardDelete(id: string, organizationId: string) {
     await this.findOne(id, organizationId);
     await this.sensors.delete(id);
+  }
+
+  async transfer(id: string, organizationId: string, newSiteId: string) {
+    const sensor = await this.findOne(id, organizationId);
+
+    if (sensor.siteId === newSiteId) {
+      throw new BadRequestException('Sensor is already assigned to the specified site');
+    }
+
+    const targetSite = await this.sites.findOne({ where: { id: newSiteId, organizationId } });
+    if (!targetSite) throw new NotFoundException(`Site ${newSiteId} not found in this organization`);
+
+    // Check externalId uniqueness on the target site
+    if (sensor.externalId) {
+      const conflict = await this.sensors.findOne({
+        where: { siteId: newSiteId, externalId: sensor.externalId },
+      });
+      if (conflict) {
+        throw new BadRequestException(
+          `A sensor with externalId "${sensor.externalId}" already exists on the target site`,
+        );
+      }
+    }
+
+    await this.sensors.update(id, { siteId: newSiteId });
+    return this.findOne(id, organizationId);
   }
 
   // ── SensorConfig (immutable versioning) ───────────────────────────────────

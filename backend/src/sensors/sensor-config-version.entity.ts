@@ -12,7 +12,7 @@ export class SensorConfigVersion {
   @Column({ name: 'config_id' })
   configId!: string;
 
-  @ManyToOne(() => SensorConfig, (c) => c.versions)
+  @ManyToOne(() => SensorConfig, (c) => c.versions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'config_id' })
   config!: SensorConfig;
 

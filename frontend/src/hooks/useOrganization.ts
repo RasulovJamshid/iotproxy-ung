@@ -129,3 +129,14 @@ export function useUpdateOrganization() {
     },
   });
 }
+
+/** SYSTEM_ADMIN: update ANY org by id */
+export function useUpdateOrganizationById() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; slug?: string; rateLimitRpm?: number; rawRetentionDays?: number | null; isActive?: boolean }) =>
+      api.patch(`/organizations/${id}`, body).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['organizations'] }),
+  });
+}
+

@@ -53,8 +53,16 @@ function extractFields(
   item: unknown,
   fields: FieldMapping,
 ): { sensorId: string; phenomenonTime: string; data: Record<string, unknown> } {
-  const sensorId       = String(getPath(item, fields.sensorId) ?? '');
+  let sensorId = String(getPath(item, fields.sensorId) ?? '');
   const phenomenonTime = String(getPath(item, fields.phenomenonTime) ?? new Date().toISOString());
+
+  // Compose a unique sensor ID when multiple sensor types coexist in a single item
+  if (fields.discriminatorField) {
+    const disc = String(getPath(item, fields.discriminatorField) ?? '');
+    if (disc) sensorId = `${sensorId}:${disc}`;
+  } else if (fields.discriminatorSuffix) {
+    sensorId = `${sensorId}:${fields.discriminatorSuffix}`;
+  }
 
   let data: Record<string, unknown>;
   if (typeof fields.data === 'string') {

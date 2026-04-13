@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Delete, Body, Param,
+  Controller, Get, Post, Patch, Delete, Body, Param,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -27,6 +27,12 @@ export class WebhooksController {
   @Roles('ADMIN')
   create(@Body() body: { url: string; events: string[] }, @CurrentUser() user: AuthUser) {
     return this.service.create(user.organizationId, body);
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN')
+  update(@Param('id') id: string, @Body() body: { url?: string; events?: string[]; isActive?: boolean }, @CurrentUser() user: AuthUser) {
+    return this.service.update(id, user.organizationId, body);
   }
 
   @Delete(':id')

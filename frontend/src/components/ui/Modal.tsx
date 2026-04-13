@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Props {
   open: boolean;
@@ -18,10 +19,10 @@ export function Modal({ open, onClose, title, children, width = 'max-w-lg' }: Pr
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="backdrop-enter absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className={`modal-enter relative z-10 flex w-full ${width} max-h-[85vh] flex-col rounded-2xl bg-white/95 dark:bg-slate-900/95 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.65)] dark:shadow-[0_24px_48px_-24px_rgba(0,0,0,0.9)] ring-1 ring-white/60 dark:ring-slate-700/60`}>
+      <div className={`modal-enter relative z-[101] flex w-full ${width} max-h-[85vh] flex-col rounded-2xl bg-white/95 dark:bg-slate-900/95 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.65)] dark:shadow-[0_24px_48px_-24px_rgba(0,0,0,0.9)] ring-1 ring-white/60 dark:ring-slate-700/60`}>
         <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200 dark:border-slate-700 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
           <button
@@ -35,6 +36,7 @@ export function Modal({ open, onClose, title, children, width = 'max-w-lg' }: Pr
         </div>
         <div className="overflow-y-auto px-6 py-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

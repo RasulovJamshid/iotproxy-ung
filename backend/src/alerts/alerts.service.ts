@@ -33,7 +33,7 @@ export class AlertsService {
 
   async deleteRule(id: string, organizationId: string) {
     await this.findRule(id, organizationId);
-    await this.rules.update(id, { isActive: false });
+    await this.rules.delete(id);
   }
 
   getEvents(organizationId: string, sensorId?: string) {
@@ -44,5 +44,22 @@ export class AlertsService {
       order: { createdAt: 'DESC' },
       take: 100,
     });
+  }
+
+  async findEvent(id: string, organizationId: string) {
+    const ev = await this.events.findOne({ where: { id, organizationId } });
+    if (!ev) throw new NotFoundException(`Alert event ${id} not found`);
+    return ev;
+  }
+
+  async updateEventState(id: string, organizationId: string, state: string) {
+    await this.findEvent(id, organizationId);
+    await this.events.update(id, { state });
+    return this.findEvent(id, organizationId);
+  }
+
+  async deleteEvent(id: string, organizationId: string) {
+    await this.findEvent(id, organizationId);
+    await this.events.delete(id);
   }
 }

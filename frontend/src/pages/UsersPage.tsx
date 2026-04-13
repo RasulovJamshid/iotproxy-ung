@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   useOrgUsers, useCreateUser, useUpdateUser, useAllOrganizations,
   useUserMemberships, useAddMembership, useUpdateMembership, useRemoveMembership,
@@ -6,6 +6,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { EmptyState } from '../components/ui/EmptyState';
 import { PageSpinner } from '../components/ui/Spinner';
 import { Pagination } from '../components/ui/Pagination';
@@ -16,28 +17,31 @@ import type { OrgUser } from '../types';
 const ROLES = ['VIEWER', 'USER', 'ADMIN'];
 const ALL_ROLES = [...ROLES, 'SYSTEM_ADMIN'];
 
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
+// ── Icons ──────────────────────────────────────────────────────────────────────
+const Icon = ({ d, className = 'w-4 h-4' }: { d: string; className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={className}>
+    <path d={d} strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const Icons = {
+  Plus:    () => <Icon d="M12 5v14M5 12h14" />,
+  Edit:    () => <Icon d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />,
+  Trash:   () => <Icon d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" className="w-3.5 h-3.5" />,
+  Toggle:  () => <Icon d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />,
+  Search:  () => <Icon d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />,
+  Close:   () => <Icon d="M6 18L18 6M6 6l12 12" />,
+};
 
-function EditIcon() {
+// ── Stat Card ──────────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, accent = false }: { label: string; value: string | number; sub?: string; accent?: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.536-6.536a2 2 0 012.828 0l.172.172a2 2 0 010 2.828L12 14H9v-3z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-    </svg>
+    <div className={`rounded-2xl p-5 border ${accent
+      ? 'bg-gradient-to-br from-blue-500 to-indigo-600 border-blue-600/30 text-white'
+      : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100'}`}>
+      <p className={`text-[11px] font-semibold uppercase tracking-widest mb-1 ${accent ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>{label}</p>
+      <p className={`text-3xl font-bold ${accent ? 'text-white' : ''}`}>{value}</p>
+      {sub && <p className={`text-xs mt-1 ${accent ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'}`}>{sub}</p>}
+    </div>
   );
 }
 
@@ -89,12 +93,13 @@ function MembershipPanel({ userId, isSelf }: { userId: string; isSelf: boolean }
               )}
               {!isSelf && (
                 <button
+                  type="button"
                   onClick={() => removeMembership.mutate({ userId, orgId: org.id })}
                   disabled={removeMembership.isPending}
-                  className="text-red-400 hover:text-red-600 disabled:opacity-40 flex-shrink-0"
+                  className="text-red-400 hover:text-red-600 disabled:opacity-40 flex-shrink-0 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                   title="Remove from org"
                 >
-                  <TrashIcon />
+                  <Icons.Trash />
                 </button>
               )}
             </div>
@@ -133,6 +138,105 @@ function MembershipPanel({ userId, isSelf }: { userId: string; isSelf: boolean }
   );
 }
 
+// ── User Row ────────────────────────────────────────────────────────────────────
+function UserRow({
+  user: u,
+  me,
+  isAdmin,
+  isSysAdmin,
+  orgName,
+  onEdit,
+}: {
+  user: OrgUser;
+  me: any;
+  isAdmin: boolean;
+  isSysAdmin: boolean;
+  orgName: (id: string) => string;
+  onEdit: (u: OrgUser) => void;
+}) {
+  const updateUser = useUpdateUser();
+  const [confirmToggle, setConfirmToggle] = useState(false);
+
+  const handleToggleActive = async () => {
+    await updateUser.mutateAsync({ userId: u.id, currentOrgId: u.organizationId, isActive: !u.isActive });
+    setConfirmToggle(false);
+  };
+
+  return (
+    <>
+      <tr className="table-row group">
+        <td className="table-td">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 text-xs font-bold uppercase text-slate-600 dark:text-slate-300 flex-shrink-0 shadow">
+              {u.email[0]}
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900 dark:text-slate-100 leading-tight">{u.email}</span>
+                {u.id === me?.id && (
+                  <span className="rounded bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 ring-1 ring-inset ring-blue-500/20">
+                    You
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400 font-mono mt-0.5 leading-none">{u.id}</p>
+            </div>
+          </div>
+        </td>
+        <td className="table-td">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+            {u.role}
+          </span>
+        </td>
+        {isSysAdmin && (
+          <td className="table-td text-sm text-slate-500 dark:text-slate-400">{orgName(u.organizationId)}</td>
+        )}
+        <td className="table-td"><Badge value={u.isActive} /></td>
+        <td className="table-td text-slate-400 text-xs">
+          {formatDistanceToNow(new Date(u.createdAt), { addSuffix: true })}
+        </td>
+        <td className="table-td">
+          {isAdmin && (
+            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={() => onEdit(u)}
+                title="Edit user"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                <Icons.Edit />
+              </button>
+              {u.id !== me?.id && (
+                <button
+                  onClick={() => setConfirmToggle(true)}
+                  disabled={updateUser.isPending}
+                  title={u.isActive ? 'Deactivate' : 'Activate'}
+                  className={`p-1.5 rounded-lg transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 ${u.isActive ? 'text-slate-400 hover:text-red-500 dark:hover:text-red-400' : 'text-slate-400 hover:text-green-600 dark:hover:text-green-400'}`}
+                >
+                  <Icons.Toggle />
+                </button>
+              )}
+            </div>
+          )}
+        </td>
+      </tr>
+
+      {/* Activate / Deactivate confirm */}
+      <ConfirmDialog
+        open={confirmToggle}
+        onClose={() => setConfirmToggle(false)}
+        onConfirm={handleToggleActive}
+        title={u.isActive ? 'Deactivate User' : 'Activate User'}
+        description={u.isActive
+          ? `Are you sure you want to deactivate ${u.email}? They will immediately lose access.`
+          : `Reactivate ${u.email}? They will regain access immediately.`}
+        confirmLabel={u.isActive ? 'Deactivate' : 'Activate'}
+        danger={u.isActive}
+        loading={updateUser.isPending}
+      />
+    </>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function UsersPage() {
   const { user: me } = useAuth();
@@ -142,10 +246,29 @@ export default function UsersPage() {
   const { data: allOrgs } = useAllOrganizations();
   const [viewOrgId, setViewOrgId] = useState<string>(me?.organizationId ?? '');
 
-  const { data: users, isLoading } = useOrgUsers(viewOrgId || undefined);
+  const { data: users = [], isLoading } = useOrgUsers(viewOrgId || undefined);
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
-  const pg = usePagination(users);
+  
+  // ── Filters & Search ───────────────────────────────────────────────────────
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  const filteredUsers = useMemo(() => {
+    let list = users;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(u => u.email.toLowerCase().includes(q));
+    }
+    if (statusFilter === 'active')   list = list.filter(u => u.isActive);
+    if (statusFilter === 'inactive') list = list.filter(u => !u.isActive);
+    return list;
+  }, [users, search, statusFilter]);
+
+  const pg = usePagination(filteredUsers);
+  
+  const activeCount = users.filter(u => u.isActive).length;
+  const adminCount = users.filter(u => u.role === 'ADMIN' || u.role === 'SYSTEM_ADMIN').length;
 
   // ── Create state ──────────────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false);
@@ -190,43 +313,92 @@ export default function UsersPage() {
     setEditUser(null);
   };
 
-  const handleToggleActive = (u: OrgUser) => {
-    updateUser.mutate({ userId: u.id, currentOrgId: u.organizationId, isActive: !u.isActive });
-  };
-
   const orgName = (orgId: string) => allOrgs?.find((o) => o.id === orgId)?.name ?? orgId.slice(0, 8) + '…';
 
+  if (isLoading) return <PageSpinner />;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Members of your organization — manage roles and access here.
-          </p>
-          {isSysAdmin && allOrgs && (
-            <select
-              className="input h-8 text-sm py-0 pr-8 w-52"
-              value={viewOrgId}
-              onChange={(e) => setViewOrgId(e.target.value)}
-            >
-              {allOrgs.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          )}
+    <div className="space-y-6">
+      
+      {/* Scope Header (System Admin only) */}
+      {isSysAdmin && allOrgs && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Context</p>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Viewing users for organization:</p>
+          </div>
+          <select
+            className="input w-full sm:w-72 font-medium"
+            value={viewOrgId}
+            onChange={(e) => setViewOrgId(e.target.value)}
+          >
+            <option value="">-- All (Fallback) --</option>
+            {allOrgs.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatCard label="Total Users" value={users.length} accent />
+        <StatCard label="Active" value={activeCount} sub={`${users.length > 0 ? Math.round((activeCount / users.length) * 100) : 0}% of total`} />
+        <StatCard label="Inactive" value={users.length - activeCount} />
+        <StatCard label="Admins" value={adminCount} />
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Search */}
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Icons.Search /></span>
+            <input
+              className="input pl-9 w-52"
+              placeholder="Search users…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <Icons.Close />
+              </button>
+            )}
+          </div>
+          {/* Status filter */}
+          <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+            {(['all', 'active', 'inactive'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors ${statusFilter === f ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-slate-400">{pg.total} result{pg.total !== 1 ? 's' : ''}</p>
         </div>
         {isAdmin && (
           <button onClick={() => setCreateOpen(true)} className="btn-primary flex items-center gap-2">
-            <PlusIcon /> Invite User
+            <Icons.Plus /> Invite User
           </button>
         )}
       </div>
 
-      {isLoading ? (
-        <PageSpinner />
-      ) : !users?.length ? (
+      {/* Table */}
+      {filteredUsers.length === 0 ? (
         <div className="card">
-          <EmptyState title="No users yet" description="Invite team members to collaborate on this organization." />
+          <EmptyState
+            title={search ? 'No matching users' : 'No users yet'}
+            description={search ? 'Try adjusting your search or filter.' : 'Invite team members to collaborate.'}
+            action={!search && isAdmin ? (
+              <button onClick={() => setCreateOpen(true)} className="btn-primary flex items-center gap-2">
+                <Icons.Plus /> Invite User
+              </button>
+            ) : undefined}
+          />
         </div>
       ) : (
         <div className="card-flush">
@@ -238,59 +410,20 @@ export default function UsersPage() {
                 {isSysAdmin && <th className="table-th">Organization</th>}
                 <th className="table-th">Status</th>
                 <th className="table-th">Joined</th>
-                {isAdmin && <th className="table-th" />}
+                <th className="table-th w-32">Actions</th>
               </tr>
             </thead>
             <tbody>
               {pg.paged.map((u) => (
-                <tr key={u.id} className="table-row">
-                  <td className="table-td">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-800 text-xs font-bold uppercase text-slate-600 dark:text-slate-300 flex-shrink-0">
-                        {u.email[0]}
-                      </span>
-                      <span className="font-medium text-slate-800 dark:text-slate-200 text-sm">{u.email}</span>
-                      {u.id === me?.id && (
-                        <span className="rounded-full bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 ring-1 ring-inset ring-blue-500/20">
-                          You
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="table-td"><Badge value={u.role} /></td>
-                  {isSysAdmin && (
-                    <td className="table-td text-sm text-slate-500">{orgName(u.organizationId)}</td>
-                  )}
-                  <td className="table-td">
-                    <Badge value={u.isActive ? 'ACTIVE' : 'INACTIVE'} />
-                  </td>
-                  <td className="table-td text-slate-400 dark:text-slate-500 text-xs">
-                    {formatDistanceToNow(new Date(u.createdAt), { addSuffix: true })}
-                  </td>
-                  {isAdmin && (
-                    <td className="table-td">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
-                          onClick={() => openEdit(u)}
-                          className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-                        >
-                          <EditIcon /> Edit
-                        </button>
-                        {u.id !== me?.id && (
-                          <button
-                            onClick={() => handleToggleActive(u)}
-                            disabled={updateUser.isPending}
-                            className={`text-xs font-medium disabled:opacity-50 ${
-                              u.isActive ? 'text-red-500 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-800'
-                            }`}
-                          >
-                            {u.isActive ? 'Deactivate' : 'Reactivate'}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  )}
-                </tr>
+                <UserRow
+                  key={u.id}
+                  user={u}
+                  me={me}
+                  isAdmin={isAdmin}
+                  isSysAdmin={isSysAdmin}
+                  orgName={orgName}
+                  onEdit={openEdit}
+                />
               ))}
             </tbody>
           </table>
@@ -301,7 +434,7 @@ export default function UsersPage() {
       )}
 
       {/* Create modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Invite User">
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Invite User" width="max-w-md">
         <form onSubmit={handleCreate} className="space-y-4">
           {isSysAdmin && allOrgs && (
             <div>
@@ -344,7 +477,7 @@ export default function UsersPage() {
       </Modal>
 
       {/* Edit modal */}
-      <Modal open={!!editUser} onClose={() => setEditUser(null)} title="Edit User">
+      <Modal open={!!editUser} onClose={() => setEditUser(null)} title={`Edit User — ${editUser?.email}`} width="max-w-lg">
         <form onSubmit={handleEdit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
@@ -361,7 +494,7 @@ export default function UsersPage() {
           </div>
 
           {isSysAdmin && editUser && (
-            <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-5 mt-5">
               <MembershipPanel userId={editUser.id} isSelf={editUser.id === me?.id && !isSysAdmin} />
             </div>
           )}
@@ -369,10 +502,10 @@ export default function UsersPage() {
           {updateUser.error && (
             <p className="text-sm text-red-600">{(updateUser.error as any)?.response?.data?.message ?? 'Failed to update user'}</p>
           )}
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800 mt-5">
             <button type="button" onClick={() => setEditUser(null)} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={updateUser.isPending} className="btn-primary">
-              {updateUser.isPending ? 'Saving…' : 'Save changes'}
+              {updateUser.isPending ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
         </form>

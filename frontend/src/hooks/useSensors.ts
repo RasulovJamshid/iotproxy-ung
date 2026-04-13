@@ -48,6 +48,18 @@ export function useUpdateSensor() {
   });
 }
 
+export function useTransferSensor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, newSiteId }: { id: string; newSiteId: string }) =>
+      api.patch(`/sensors/${id}/transfer`, { newSiteId }).then((r) => r.data),
+    onSuccess: (updated: Sensor, { id }) => {
+      qc.setQueryData(['sensors', 'detail', id], updated);
+      qc.invalidateQueries({ queryKey: ['sensors'] });
+    },
+  });
+}
+
 export function useUpdateSensorStatus() {
   const qc = useQueryClient();
   return useMutation({

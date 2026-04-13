@@ -108,6 +108,19 @@ export class SitesController {
     return this.service.transition(id, organizationId, status);
   }
 
+  @Patch(':id/transfer')
+  transfer(
+    @Param('id') id: string,
+    @Body('newOrgId') newOrgId: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    // Only SYSTEM_ADMIN can move a site across organizations
+    if (!user || user.role !== 'SYSTEM_ADMIN') {
+      throw new UnauthorizedException('Only system administrators can transfer sites between organizations');
+    }
+    return this.service.transfer(id, newOrgId);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,

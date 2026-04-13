@@ -58,3 +58,15 @@ export function useUpdateSite() {
     },
   });
 }
+
+export function useTransferSite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, newOrgId }: { id: string; newOrgId: string }) =>
+      api.patch(`/sites/${id}/transfer`, { newOrgId }).then((r) => r.data),
+    onSuccess: (_updated, { id }) => {
+      qc.invalidateQueries({ queryKey: ['sites'] });
+      qc.invalidateQueries({ queryKey: ['sites', id] });
+    },
+  });
+}

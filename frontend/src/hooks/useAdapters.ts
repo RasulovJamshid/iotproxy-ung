@@ -57,3 +57,38 @@ export function useTriggerPull() {
     },
   });
 }
+
+export function useDiscoverSchema() {
+  return useMutation({
+    mutationFn: async (sample: unknown) => {
+      const res = await api.post('/adapters/discover', { sample });
+      return res.data as DiscoveryResult;
+    },
+  });
+}
+
+export interface DiscoveredField {
+  key: string;
+  jsonPath: string;
+  type: string;
+  uniqueValueCount: number;
+  sampleValues: string[];
+  isProbablyId: boolean;
+  isProbablyTime: boolean;
+  isProbablyNumeric: boolean;
+  isProbablyDiscriminator: boolean;
+}
+
+export interface DiscoveryResult {
+  readingsPath: string;
+  totalItems: number;
+  fields: DiscoveredField[];
+  uniqueSensorIds: string[];
+  discriminatorDetected: boolean;
+  suggestions: {
+    sensorIdPath: string;
+    discriminatorField: string | null;
+    phenomenonTimePath: string;
+    dataFields: { key: string; path: string }[];
+  };
+}

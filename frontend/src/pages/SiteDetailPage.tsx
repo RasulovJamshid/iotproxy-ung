@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { useSite, useTransitionSite, useUpdateSite } from '../hooks/useSites';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useSite, useTransitionSite, useUpdateSite, useTransferSite } from '../hooks/useSites';
 import { useSensors, useCreateSensor } from '../hooks/useSensors';
 import { useSiteLatest } from '../hooks/useReadings';
+import { useAllOrganizations } from '../hooks/useOrganization';
+import { useAuth } from '../contexts/AuthContext';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PageSpinner } from '../components/ui/Spinner';
 import { Tooltip } from '../components/ui/Tooltip';
 import { DiscoveryPanel } from '../components/DiscoveryPanel';
@@ -28,12 +31,18 @@ function ChevronRight() {
 
 export default function SiteDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSysAdmin = user?.role === 'SYSTEM_ADMIN';
+
   const { data: site, isLoading: siteLoading } = useSite(id!);
   const { data: sensors, isLoading: sensorsLoading } = useSensors(id);
   const { data: latestReadings } = useSiteLatest(id!);
+  const { data: allOrgs } = useAllOrganizations();
   const transition = useTransitionSite();
   const updateSite = useUpdateSite();
   const createSensor = useCreateSensor();
+  const transferSite = useTransferSite();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [sensorName, setSensorName] = useState('');
@@ -42,6 +51,9 @@ export default function SiteDetailPage() {
   const [editingInfo, setEditingInfo] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [descDraft, setDescDraft] = useState('');
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferOrgId, setTransferOrgId] = useState('');
+  const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
 
   if (siteLoading) return <PageSpinner />;
   if (!site) return <p className="text-sm text-slate-500 dark:text-slate-400">Site not found.</p>;
@@ -129,6 +141,14 @@ export default function SiteDetailPage() {
           </div>
 
           <div className="flex flex-col items-end gap-3">
+            {isSysAdmin && (
+              <button
+                onClick={() => { setTransferOrgId(''); setTransferOpen(true); }}
+                className="text-xs text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200 dark:border-slate-700 rounded px-2.5 py-1 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
+              >
+                Transfer to org…
+              </button>
+            )}
             {site.commissioningStatus === 'DISCOVERY' && (
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input
@@ -288,6 +308,54 @@ export default function SiteDetailPage() {
           <LiveReadingsFeed siteId={id!} />
         </div>
       )}
+
+      {/* Transfer site modal */}
+      <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer Site to Another Organization" width="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Moving this site will also reassign all its sensors to the target organization. This action cannot be undone from the UI.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Target Organization</label>
+            <select
+              className="input w-full"
+              value={transferOrgId}
+              onChange={(e) => setTransferOrgId(e.target.value)}
+            >
+              <option value="">Select organization…</option>
+              {allOrgs?.filter((o) => o.id !== site.organizationId).map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setTransferOpen(false)} className="btn-secondary">Cancel</button>
+            <button
+              type="button"
+              disabled={!transferOrgId}
+              onClick={() => { setTransferOpen(false); setTransferConfirmOpen(true); }}
+              className="btn-primary bg-indigo-600 hover:bg-indigo-700"
+            >
+              Review Transfer
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={transferConfirmOpen}
+        onClose={() => setTransferConfirmOpen(false)}
+        onConfirm={async () => {
+          await transferSite.mutateAsync({ id: id!, newOrgId: transferOrgId });
+          setTransferConfirmOpen(false);
+          navigate('/sites');
+        }}
+        title="Confirm Site Transfer"
+        description={`Transfer "${site.name}" and all its sensors to "${allOrgs?.find((o) => o.id === transferOrgId)?.name ?? transferOrgId}"? You will lose access to this site after the transfer.`}
+        confirmLabel="Transfer Site"
+        danger
+        loading={transferSite.isPending}
+      />
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Add Data Source">
         <form onSubmit={handleCreateSensor} className="space-y-4">

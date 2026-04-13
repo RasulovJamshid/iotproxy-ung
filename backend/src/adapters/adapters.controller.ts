@@ -105,4 +105,15 @@ export class AdaptersController {
       responseMapping: tpl.responseMapping,
     });
   }
+
+  /**
+   * Schema discovery: paste a sample JSON response and get back suggested mappings.
+   * Handles the common pattern where an array of items represents different
+   * sensor/product types for the same site (discriminator pattern).
+   */
+  @Post('discover')
+  @Roles('ADMIN')
+  discover(@Body() body: { sample: unknown }) {
+    return this.service.discoverSchema(body.sample);
+  }
 }

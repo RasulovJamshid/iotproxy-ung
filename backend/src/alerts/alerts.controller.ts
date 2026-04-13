@@ -120,4 +120,34 @@ export class AlertsController {
     
     return this.service.getEvents(organizationId, sensorId);
   }
+
+  @Patch('events/:id')
+  updateEvent(
+    @Param('id') id: string,
+    @Body('state') state: string,
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+    if (org && !org.permissions.includes(PERMISSIONS.ADMIN)) throw new UnauthorizedException();
+    if (user && user.role !== 'ADMIN' && user.role !== 'SYSTEM_ADMIN') throw new UnauthorizedException();
+    
+    return this.service.updateEventState(id, organizationId, state);
+  }
+
+  @Delete('events/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteEvent(
+    @Param('id') id: string,
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+    if (org && !org.permissions.includes(PERMISSIONS.ADMIN)) throw new UnauthorizedException();
+    if (user && user.role !== 'ADMIN' && user.role !== 'SYSTEM_ADMIN') throw new UnauthorizedException();
+
+    return this.service.deleteEvent(id, organizationId);
+  }
 }

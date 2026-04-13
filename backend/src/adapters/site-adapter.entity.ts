@@ -7,9 +7,15 @@ import { Site } from '../sites/site.entity';
 // ── Mapping type definitions ──────────────────────────────────────────────────
 
 export interface FieldMapping {
-  sensorId:       string;  // JSONPath within each reading item
-  phenomenonTime: string;
-  data:           string | Record<string, string>; // single path OR { field: path }
+  sensorId:          string;  // JSONPath within each reading item
+  /** Optional: combine sensorId field with a discriminator field to create unique sensor IDs.
+   *  E.g. if each row has a "product_type" field, set discriminatorField to "$.Классификатор"
+   *  and the resulting sensorId becomes "<sensorId_value>:<discriminator_value>"
+   */
+  discriminatorField?: string; // JSONPath to the field that differentiates sensor types within an item
+  discriminatorSuffix?: string; // static suffix to add instead of a dynamic field (mutually exclusive with discriminatorField)
+  phenomenonTime:    string;
+  data:              string | Record<string, string>; // single path OR { field: path }
 }
 
 export interface InboundMapping {

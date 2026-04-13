@@ -52,12 +52,17 @@ export class WebhookService {
     );
   }
 
+  async update(id: string, organizationId: string, data: Partial<Webhook>) {
+    await this.repo.update({ id, organizationId }, data);
+    return this.repo.findOne({ where: { id, organizationId } });
+  }
+
   findAll(organizationId: string) {
     return this.repo.find({ where: { organizationId } });
   }
 
   async revoke(id: string, organizationId: string) {
-    await this.repo.update({ id, organizationId }, { isActive: false });
+    await this.repo.delete({ id, organizationId });
   }
 
   // Called by WebhookWorker to sign and send the payload

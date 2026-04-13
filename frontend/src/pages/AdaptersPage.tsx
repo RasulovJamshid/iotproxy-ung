@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Settings, Plug, Download, AlertCircle, CheckCircle2, Clock, BookTemplate } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Settings, Plug, Download, AlertCircle, CheckCircle2, Clock, BookTemplate, RefreshCw } from 'lucide-react';
 import { useSites } from '../hooks/useSites';
 import { useAdapter, useTriggerPull } from '../hooks/useAdapters';
 import { InboundConfigForm } from '../components/adapters/InboundConfigForm';
@@ -15,13 +15,28 @@ export function AdaptersPage() {
 
   const { data: adapter, isLoading: adapterLoading, refetch: refetchAdapter } = useAdapter(selectedSiteId);
   const triggerPull = useTriggerPull();
+  const [pullStatus, setPullStatus] = useState<'idle' | 'queued' | 'polling'>('idle');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleTriggerPull = async () => {
     if (!selectedSiteId) return;
+    setPullStatus('queued');
     try {
       await triggerPull.mutateAsync(selectedSiteId);
-      alert('Pull triggered successfully');
+      setPullStatus('polling');
+      // Poll every 2 s for up to 20 s to pick up the updated pullLastAt
+      let attempts = 0;
+      pollRef.current = setInterval(async () => {
+        attempts++;
+        await refetchAdapter();
+        if (attempts >= 10) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setPullStatus('idle');
+        }
+      }, 2000);
     } catch (err) {
+      setPullStatus('idle');
       alert('Failed to trigger pull: ' + (err as Error).message);
     }
   };
@@ -129,14 +144,18 @@ export function AdaptersPage() {
           )}
 
           {adapter.pullEnabled && (
-            <div className="mt-4">
+            <div className="mt-4 flex items-center gap-3">
               <button
                 onClick={handleTriggerPull}
-                disabled={triggerPull.isPending}
-                className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm rounded hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                disabled={triggerPull.isPending || pullStatus === 'polling'}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm rounded hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {triggerPull.isPending ? 'Triggering...' : 'Trigger Pull Now'}
+                <RefreshCw className={`w-3.5 h-3.5 ${pullStatus === 'polling' ? 'animate-spin' : ''}`} />
+                {pullStatus === 'queued' ? 'Queueing…' : pullStatus === 'polling' ? 'Waiting for result…' : 'Trigger Pull Now'}
               </button>
+              {pullStatus === 'polling' && (
+                <span className="text-xs text-slate-400 dark:text-slate-500">Checking for updates automatically…</span>
+              )}
             </div>
           )}
         </div>

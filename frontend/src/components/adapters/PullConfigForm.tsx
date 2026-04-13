@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Save, HelpCircle, Plus, Trash2, BookTemplate } from 'lucide-react';
+import { Save, HelpCircle, Plus, Trash2, BookTemplate, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { SiteAdapter, PullAuthType } from '@iotproxy/shared';
 import { useUpdateAdapter } from '../../hooks/useAdapters';
 import { SaveAsTemplateModal } from './SaveAsTemplateModal';
+import { SchemaDiscoveryWizard } from './SchemaDiscoveryWizard';
 
 interface Props {
   siteId: string;
@@ -81,6 +82,296 @@ function KVEditor({
   );
 }
 
+// ── Shared helpers ────────────────────────────────────────────────────────────
+function C({ children }: { children: string }) {
+  return (
+    <code className="bg-white dark:bg-slate-800 px-1 rounded border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 text-[11px]">
+      {children}
+    </code>
+  );
+}
+
+function ConfigRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2 text-[11px]">
+      <span className="text-gray-500 dark:text-slate-400 w-32 flex-shrink-0">{label}</span>
+      <C>{value}</C>
+    </div>
+  );
+}
+
+function Arrow() {
+  return <div className="flex items-center justify-center text-slate-400 dark:text-slate-600 text-lg select-none">↓</div>;
+}
+
+function StoredAs({ children }: { children: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-1">Stored as:</p>
+      <pre className="bg-slate-950 text-sky-300 rounded p-3 overflow-x-auto leading-5 text-[11px]">{children}</pre>
+    </div>
+  );
+}
+
+// ── Pull response mapping samples ─────────────────────────────────────────────
+function PullSamples() {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'rest-nested' | 'flat-array' | 'discriminator' | 'paginated'>('rest-nested');
+
+  const TABS = [
+    { id: 'rest-nested'    as const, label: 'REST — nested object' },
+    { id: 'flat-array'     as const, label: 'Flat array' },
+    { id: 'discriminator'  as const, label: 'Metric-type rows' },
+    { id: 'paginated'      as const, label: 'Paginated / POST body' },
+  ];
+
+  return (
+    <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-slate-800/60 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors font-medium"
+      >
+        <span className="flex items-center gap-1.5">
+          <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
+          API response examples — how to map each pattern
+        </span>
+        {open
+          ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+          : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+      </button>
+
+      {open && (
+        <div className="p-3 bg-white dark:bg-slate-900/50 space-y-3">
+          {/* Tab strip */}
+          <div className="flex flex-wrap gap-px rounded overflow-hidden border border-gray-200 dark:border-slate-700 w-fit text-[11px]">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 font-medium transition-colors ${tab === t.id ? 'bg-blue-600 text-white' : 'bg-white dark:bg-slate-900 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── REST — nested object ── */}
+          {tab === 'rest-nested' && (
+            <div className="space-y-3 text-gray-700 dark:text-slate-300">
+              <p>Standard REST API where readings are in an array under a key, each item containing a nested measurements object.</p>
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-1">API response (GET /api/v2/readings?since={`{{lastPollAt}}`}):</p>
+                <pre className="bg-slate-950 text-emerald-400 rounded p-3 overflow-x-auto leading-5">{`{
+  "status":  "ok",
+  "polledAt": "2026-04-13T10:05:00Z",
+  "results": [
+    {
+      "device":    "SN-001",
+      "timestamp": "2026-04-13T10:00:00Z",
+      "measurements": { "temperature": 22.5, "humidity": 60.1 }
+    },
+    {
+      "device":    "SN-002",
+      "timestamp": "2026-04-13T10:00:30Z",
+      "measurements": { "temperature": 19.4, "co2": 412, "tvoc": 0.07 }
+    }
+  ]
+}`}</pre>
+              </div>
+
+              <Arrow />
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-2">Response mapping config:</p>
+                <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 rounded p-2 border border-slate-200 dark:border-slate-700">
+                  <ConfigRow label="Readings Path"  value="$.results[*]" />
+                  <ConfigRow label="Sensor ID Path" value="$.device" />
+                  <ConfigRow label="Timestamp Path" value="$.timestamp" />
+                  <ConfigRow label="Data Path"      value="$.measurements" />
+                </div>
+              </div>
+
+              <Arrow />
+
+              <StoredAs>{`// Two records written per poll cycle:
+{ "sensorId": "<SN-001 UUID>", "phenomenonTime": "2026-04-13T10:00:00Z",
+  "processedData": { "temperature": 22.5, "humidity": 60.1 } }
+
+{ "sensorId": "<SN-002 UUID>", "phenomenonTime": "2026-04-13T10:00:30Z",
+  "processedData": { "temperature": 19.4, "co2": 412, "tvoc": 0.07 } }`}</StoredAs>
+            </div>
+          )}
+
+          {/* ── Flat array ── */}
+          {tab === 'flat-array' && (
+            <div className="space-y-3 text-gray-700 dark:text-slate-300">
+              <p>API returns a bare JSON array at the root — no wrapper object. All measurement fields sit alongside the ID and timestamp in each item.</p>
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-1">API response (GET /telemetry/export):</p>
+                <pre className="bg-slate-950 text-emerald-400 rounded p-3 overflow-x-auto leading-5">{`[
+  {
+    "deviceId":  "HUM-01",
+    "capturedAt": "2026-04-13T10:00:00Z",
+    "temp":  22.5,
+    "rh":    60.0,
+    "press": 1013.2
+  },
+  {
+    "deviceId":  "HUM-02",
+    "capturedAt": "2026-04-13T10:00:10Z",
+    "temp":  21.0,
+    "rh":    58.5,
+    "press": 1012.9
+  }
+]`}</pre>
+              </div>
+
+              <Arrow />
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-2">Response mapping config:</p>
+                <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 rounded p-2 border border-slate-200 dark:border-slate-700">
+                  <ConfigRow label="Readings Path"  value="$[*]" />
+                  <ConfigRow label="Sensor ID Path" value="$.deviceId" />
+                  <ConfigRow label="Timestamp Path" value="$.capturedAt" />
+                  <ConfigRow label="Data Path"      value="$" />
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1.5">
+                  Data path <C>$</C> captures the whole item. <C>deviceId</C> and <C>capturedAt</C> will be included in <code className="bg-white dark:bg-slate-800 px-0.5 rounded border border-gray-200 dark:border-slate-700">processedData</code> alongside the measurements — harmless but expected.
+                </p>
+              </div>
+
+              <Arrow />
+
+              <StoredAs>{`{ "sensorId": "<HUM-01 UUID>", "phenomenonTime": "2026-04-13T10:00:00Z",
+  "processedData": { "deviceId": "HUM-01", "capturedAt": "...", "temp": 22.5, "rh": 60.0, "press": 1013.2 } }
+
+{ "sensorId": "<HUM-02 UUID>", "phenomenonTime": "2026-04-13T10:00:10Z",
+  "processedData": { "deviceId": "HUM-02", "capturedAt": "...", "temp": 21.0, "rh": 58.5, "press": 1012.9 } }`}</StoredAs>
+            </div>
+          )}
+
+          {/* ── Discriminator ── */}
+          {tab === 'discriminator' && (
+            <div className="space-y-3 text-gray-700 dark:text-slate-300">
+              <p>Industrial or ERP APIs sometimes return one row per metric type — the same device produces multiple rows per timestamp, each with a different "type" label. Use the <strong>Discriminator Field</strong> to combine the type into the sensor ID so each metric maps to its own sensor.</p>
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-1">API response:</p>
+                <pre className="bg-slate-950 text-emerald-400 rounded p-3 overflow-x-auto leading-5">{`[
+  { "nodeId": "CTR-1", "metric": "temperature", "ts": "2026-04-13T10:00:00Z", "value": 22.5 },
+  { "nodeId": "CTR-1", "metric": "humidity",    "ts": "2026-04-13T10:00:00Z", "value": 60.0 },
+  { "nodeId": "CTR-1", "metric": "pressure",    "ts": "2026-04-13T10:00:00Z", "value": 1013.2 },
+  { "nodeId": "CTR-2", "metric": "temperature", "ts": "2026-04-13T10:00:05Z", "value": 19.1 }
+]`}</pre>
+              </div>
+
+              <Arrow />
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-2">Response mapping config:</p>
+                <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 rounded p-2 border border-slate-200 dark:border-slate-700">
+                  <ConfigRow label="Readings Path"       value="$[*]" />
+                  <ConfigRow label="Sensor ID Path"      value="$.nodeId" />
+                  <ConfigRow label="Discriminator Field" value="$.metric" />
+                  <ConfigRow label="Timestamp Path"      value="$.ts" />
+                  <ConfigRow label="Data Path"           value="$" />
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1.5">
+                  The discriminator appends the metric value to the sensor ID, so <C>CTR-1</C> + <C>temperature</C> → external ID <C>CTR-1:temperature</C>. Each unique combination must have a matching sensor with that External ID.
+                </p>
+              </div>
+
+              <Arrow />
+
+              <StoredAs>{`// 4 rows → 4 separate sensor records:
+{ "sensorId": "<CTR-1:temperature UUID>", "phenomenonTime": "...", "processedData": { "value": 22.5, ... } }
+{ "sensorId": "<CTR-1:humidity UUID>",    "phenomenonTime": "...", "processedData": { "value": 60.0, ... } }
+{ "sensorId": "<CTR-1:pressure UUID>",    "phenomenonTime": "...", "processedData": { "value": 1013.2, ... } }
+{ "sensorId": "<CTR-2:temperature UUID>", "phenomenonTime": "...", "processedData": { "value": 19.1, ... } }`}</StoredAs>
+            </div>
+          )}
+
+          {/* ── Paginated / POST body ── */}
+          {tab === 'paginated' && (
+            <div className="space-y-3 text-gray-700 dark:text-slate-300">
+              <p>Some APIs require a POST request with a JSON body specifying the time window. Use template variables in the body template so each poll covers only new data.</p>
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-1">HTTP config:</p>
+                <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 rounded p-2 border border-slate-200 dark:border-slate-700">
+                  <ConfigRow label="Method"       value="POST" />
+                  <ConfigRow label="URL"          value="https://api.example.com/v1/telemetry/query" />
+                  <ConfigRow label="Interval"     value="300 (seconds)" />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-1">Request body template:</p>
+                <pre className="bg-slate-950 text-emerald-400 rounded p-3 overflow-x-auto leading-5">{`{
+  "from":    "{{lastPollAt}}",
+  "to":      "{{now}}",
+  "siteId":  "{{siteId}}",
+  "limit":   500
+}`}</pre>
+                <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
+                  <C>{'{{lastPollAt}}'}</C> — timestamp of the previous successful poll.<br />
+                  <C>{'{{now}}'}</C> — current UTC time.<br />
+                  <C>{'{{siteId}}'}</C> — internal site UUID.
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-1">API response:</p>
+                <pre className="bg-slate-950 text-emerald-400 rounded p-3 overflow-x-auto leading-5">{`{
+  "page": 1,
+  "total": 2,
+  "items": [
+    {
+      "id":        "EQ-405",
+      "observedAt": "2026-04-13T10:00:00Z",
+      "data": { "flow_lpm": 12.4, "pressure_bar": 3.1, "temp_c": 18.7 }
+    },
+    {
+      "id":        "EQ-406",
+      "observedAt": "2026-04-13T10:00:15Z",
+      "data": { "flow_lpm": 9.8,  "pressure_bar": 2.9, "temp_c": 19.2 }
+    }
+  ]
+}`}</pre>
+              </div>
+
+              <Arrow />
+
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 dark:text-slate-400 mb-2">Response mapping config:</p>
+                <div className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 rounded p-2 border border-slate-200 dark:border-slate-700">
+                  <ConfigRow label="Readings Path"  value="$.items[*]" />
+                  <ConfigRow label="Sensor ID Path" value="$.id" />
+                  <ConfigRow label="Timestamp Path" value="$.observedAt" />
+                  <ConfigRow label="Data Path"      value="$.data" />
+                </div>
+              </div>
+
+              <Arrow />
+
+              <StoredAs>{`{ "sensorId": "<EQ-405 UUID>", "phenomenonTime": "2026-04-13T10:00:00Z",
+  "processedData": { "flow_lpm": 12.4, "pressure_bar": 3.1, "temp_c": 18.7 } }
+
+{ "sensorId": "<EQ-406 UUID>", "phenomenonTime": "2026-04-13T10:00:15Z",
+  "processedData": { "flow_lpm": 9.8, "pressure_bar": 2.9, "temp_c": 19.2 } }`}</StoredAs>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PullConfigForm({ siteId, adapter }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [url, setUrl] = useState('');
@@ -100,11 +391,13 @@ export function PullConfigForm({ siteId, adapter }: Props) {
   const [responseMode, setResponseMode] = useState<'single-site' | 'multi-site'>('single-site');
   const [readingsPath, setReadingsPath] = useState('$[*]');
   const [sensorIdPath, setSensorIdPath] = useState('$.sensorId');
+  const [discriminatorField, setDiscriminatorField] = useState('');
   const [phenomenonTimePath, setPhenomenonTimePath] = useState('$.phenomenonTime');
   const [dataPath, setDataPath] = useState('$.data');
 
   const updateAdapter = useUpdateAdapter();
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [discoveryMode, setDiscoveryMode] = useState(false);
 
   useEffect(() => {
     if (adapter) {
@@ -128,6 +421,7 @@ export function PullConfigForm({ siteId, adapter }: Props) {
         setResponseMode(adapter.responseMapping.mode);
         setReadingsPath(adapter.responseMapping.readingsPath);
         setSensorIdPath(adapter.responseMapping.fields.sensorId);
+        setDiscriminatorField(adapter.responseMapping.fields.discriminatorField ?? '');
         setPhenomenonTimePath(adapter.responseMapping.fields.phenomenonTime);
         setDataPath(
           typeof adapter.responseMapping.fields.data === 'string'
@@ -137,6 +431,22 @@ export function PullConfigForm({ siteId, adapter }: Props) {
       }
     }
   }, [adapter]);
+
+  // Apply mapping from Discovery Wizard
+  const applyDiscovery = (mapping: {
+    readingsPath: string;
+    sensorIdPath: string;
+    discriminatorField: string | null;
+    phenomenonTimePath: string;
+    dataPath: string;
+  }) => {
+    setReadingsPath(mapping.readingsPath);
+    setSensorIdPath(mapping.sensorIdPath);
+    setDiscriminatorField(mapping.discriminatorField ?? '');
+    setPhenomenonTimePath(mapping.phenomenonTimePath);
+    setDataPath(mapping.dataPath);
+    setDiscoveryMode(false); // ← go back to the pull config form
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,6 +488,7 @@ export function PullConfigForm({ siteId, adapter }: Props) {
             readingsPath,
             fields: {
               sensorId: sensorIdPath,
+              discriminatorField: discriminatorField.trim() || undefined,
               phenomenonTime: phenomenonTimePath,
               data: dataPath,
             },
@@ -190,19 +501,39 @@ export function PullConfigForm({ siteId, adapter }: Props) {
     }
   };
 
+  // Render discovery wizard overlay
+  if (discoveryMode) {
+    return (
+      <SchemaDiscoveryWizard
+        onApply={applyDiscovery}
+        onBack={() => setDiscoveryMode(false)}
+      />
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          id="pull-enabled"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="w-4 h-4 text-blue-600 dark:text-blue-500 rounded focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700"
-        />
-        <label htmlFor="pull-enabled" className="text-sm font-medium text-gray-700 dark:text-slate-200">
-          Enable scheduled data pull
-        </label>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="pull-enabled"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="w-4 h-4 text-blue-600 dark:text-blue-500 rounded focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700"
+          />
+          <label htmlFor="pull-enabled" className="text-sm font-medium text-gray-700 dark:text-slate-200">
+            Enable scheduled data pull
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={() => setDiscoveryMode(true)}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+        >
+          <Zap className="w-4 h-4" />
+          Schema Discovery
+        </button>
       </div>
 
       {enabled && (
@@ -411,6 +742,7 @@ export function PullConfigForm({ siteId, adapter }: Props) {
           {/* Response Mapping */}
           <div className="border-t border-gray-200 dark:border-slate-800 pt-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-200 mb-3">Response Mapping</h3>
+            <PullSamples />
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
@@ -487,6 +819,27 @@ export function PullConfigForm({ siteId, adapter }: Props) {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                   />
                 </div>
+              </div>
+
+              {/* Discriminator field (optional, for multi-sensor-per-row patterns) */}
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50">
+                <div className="flex items-start gap-2 mb-2">
+                  <Zap className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Discriminator Field (optional)</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Use this when a single API response row contains multiple sensor types distinguished by a label field
+                      (e.g. one row per product type). The sensor ID will be composed as <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">{'<sensorId>:<discriminatorValue>'}</code>.
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={discriminatorField}
+                  onChange={(e) => setDiscriminatorField(e.target.value)}
+                  placeholder="e.g. $.Классификатор  (leave blank if not needed)"
+                  className="w-full px-3 py-2 border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-gray-400 dark:placeholder:text-slate-500 text-sm font-mono"
+                />
               </div>
             </div>
           </div>

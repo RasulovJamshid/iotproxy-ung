@@ -100,6 +100,26 @@ export class SensorsController {
     return this.service.update(id, organizationId, body as any);
   }
 
+  @Patch(':id/transfer')
+  transfer(
+    @Param('id') id: string,
+    @Body('newSiteId') newSiteId: string,
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+
+    if (org && !org.permissions.includes(PERMISSIONS.ADMIN)) {
+      throw new UnauthorizedException('API key lacks admin permission');
+    }
+    if (user && user.role !== 'ADMIN' && user.role !== 'SYSTEM_ADMIN') {
+      throw new UnauthorizedException('Insufficient permissions');
+    }
+
+    return this.service.transfer(id, organizationId, newSiteId);
+  }
+
   @Patch(':id/status')
   updateStatus(
     @Param('id') id: string,

@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useSensor, useUpdateSensorStatus, useUpdateSensor, useSensorConfig, useSoftDeleteSensor, useHardDeleteSensor } from '../hooks/useSensors';
-import { useSite } from '../hooks/useSites';
+import { useSensor, useUpdateSensorStatus, useUpdateSensor, useSensorConfig, useSoftDeleteSensor, useHardDeleteSensor, useTransferSensor } from '../hooks/useSensors';
+import { useSite, useSites } from '../hooks/useSites';
 import { useReadings, useRawReadings, useDeleteReading, useClearAllReadings } from '../hooks/useReadings';
 import { useAlertEvents } from '../hooks/useAlerts';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PageSpinner } from '../components/ui/Spinner';
 import { SensorConfigForm } from '../components/SensorConfigForm';
 import { api } from '../api/client';
@@ -36,6 +38,9 @@ function ChevronRight() {
 export default function SensorDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN';
+
   const { data: sensor, isLoading } = useSensor(id!);
   const updateStatus = useUpdateSensorStatus();
   const updateSensor = useUpdateSensor();
@@ -43,6 +48,8 @@ export default function SensorDetailPage() {
   const hardDelete = useHardDeleteSensor();
   const deleteReading = useDeleteReading();
   const clearAllReadings = useClearAllReadings();
+  const transferSensor = useTransferSensor();
+  const { data: allSites } = useSites();
   const [editingExternalId, setEditingExternalId] = useState(false);
   const [externalIdDraft, setExternalIdDraft] = useState('');
   const [editingInfo, setEditingInfo] = useState(false);
@@ -59,6 +66,9 @@ export default function SensorDetailPage() {
   const [vFormula, setVFormula] = useState('');
   const [vUnit, setVUnit] = useState('');
   const [vSubmitting, setVSubmitting] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferSiteId, setTransferSiteId] = useState('');
+  const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
 
   const { startTs, endTs, intervalMs } = useMemo(() => {
     const now = new Date();
@@ -198,6 +208,17 @@ export default function SensorDetailPage() {
               </select>
             </div>
             <div className="flex items-center gap-2">
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => { setTransferSiteId(''); setTransferOpen(true); }}
+                    className="text-xs text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200 dark:border-slate-700 rounded px-2.5 py-1 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
+                  >
+                    Move to site…
+                  </button>
+                  <span className="text-xs text-slate-300 dark:text-slate-600">|</span>
+                </>
+              )}
               <button
                 onClick={async () => {
                   if (confirm('Soft delete this sensor? It can be restored later.')) {
@@ -523,6 +544,53 @@ export default function SensorDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Transfer sensor modal */}
+      <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Move Sensor to Another Site" width="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Reassign this sensor to a different site within the same organization. Historical readings stay attached to the sensor.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Target Site</label>
+            <select
+              className="input w-full"
+              value={transferSiteId}
+              onChange={(e) => setTransferSiteId(e.target.value)}
+            >
+              <option value="">Select site…</option>
+              {allSites?.filter((s) => s.id !== sensor?.siteId).map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setTransferOpen(false)} className="btn-secondary">Cancel</button>
+            <button
+              type="button"
+              disabled={!transferSiteId}
+              onClick={() => { setTransferOpen(false); setTransferConfirmOpen(true); }}
+              className="btn-primary bg-indigo-600 hover:bg-indigo-700"
+            >
+              Review Move
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={transferConfirmOpen}
+        onClose={() => setTransferConfirmOpen(false)}
+        onConfirm={async () => {
+          await transferSensor.mutateAsync({ id: id!, newSiteId: transferSiteId });
+          setTransferConfirmOpen(false);
+          navigate(`/sites/${transferSiteId}`);
+        }}
+        title="Confirm Sensor Move"
+        description={`Move "${sensor?.name}" to "${allSites?.find((s) => s.id === transferSiteId)?.name ?? transferSiteId}"? The sensor will appear under the new site immediately.`}
+        confirmLabel="Move Sensor"
+        loading={transferSensor.isPending}
+      />
 
       {/* Virtual sensor creation modal */}
       <Modal open={virtualOpen} onClose={() => setVirtualOpen(false)} title="Create Virtual Sensor">

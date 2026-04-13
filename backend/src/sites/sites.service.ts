@@ -1,14 +1,19 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Site } from './site.entity';
+import { Organization } from '../organizations/organization.entity';
+import { Sensor } from '../sensors/sensor.entity';
 
 @Injectable()
 export class SitesService {
   constructor(
     @InjectRepository(Site) private repo: Repository<Site>,
+    @InjectRepository(Organization) private orgs: Repository<Organization>,
+    @InjectRepository(Sensor) private sensors: Repository<Sensor>,
     private config: ConfigService,
+    private dataSource: DataSource,
   ) {}
 
   findAll(organizationId: string) {
@@ -17,6 +22,12 @@ export class SitesService {
 
   async findOne(id: string, organizationId: string) {
     const site = await this.repo.findOne({ where: { id, organizationId } });
+    if (!site) throw new NotFoundException(`Site ${id} not found`);
+    return site;
+  }
+
+  async findOneAny(id: string) {
+    const site = await this.repo.findOne({ where: { id } });
     if (!site) throw new NotFoundException(`Site ${id} not found`);
     return site;
   }
@@ -60,5 +71,23 @@ export class SitesService {
     await this.findOne(id, organizationId);
     await this.repo.update(id, data as any);
     return this.findOne(id, organizationId);
+  }
+
+  async transfer(id: string, newOrgId: string) {
+    const site = await this.findOneAny(id);
+
+    if (site.organizationId === newOrgId) {
+      throw new BadRequestException('Site already belongs to the specified organization');
+    }
+
+    const targetOrg = await this.orgs.findOne({ where: { id: newOrgId } });
+    if (!targetOrg) throw new NotFoundException(`Organization ${newOrgId} not found`);
+
+    await this.dataSource.transaction(async (em) => {
+      await em.update(Site, id, { organizationId: newOrgId });
+      await em.update(Sensor, { siteId: id }, { organizationId: newOrgId });
+    });
+
+    return this.repo.findOne({ where: { id } });
   }
 }

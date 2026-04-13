@@ -25,3 +25,12 @@ export function useDeleteWebhook() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
   });
 }
+
+export function useUpdateWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; url?: string; events?: string[]; isActive?: boolean }) =>
+      api.patch(`/webhooks/${id}`, body).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
+  });
+}

@@ -38,7 +38,7 @@ export class OrganizationsController {
 
   @Post()
   @Roles('SYSTEM_ADMIN')
-  create(@Body() body: { name: string; slug: string }) {
+  create(@Body() body: { name: string; slug: string; rateLimitRpm?: number; rawRetentionDays?: number | null }) {
     return this.service.create(body);
   }
 

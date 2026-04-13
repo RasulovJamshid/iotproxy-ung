@@ -17,7 +17,7 @@ export class OrganizationsService {
   // ── Organizations ────────────────────────────────────────────────────────
 
   findAll() {
-    return this.orgs.find({ where: { isActive: true } });
+    return this.orgs.find({ order: { createdAt: 'DESC' } });
   }
 
   async findOne(id: string) {
@@ -26,8 +26,8 @@ export class OrganizationsService {
     return org;
   }
 
-  async create(data: { name: string; slug: string }) {
-    return this.orgs.save(this.orgs.create(data));
+  async create(data: { name: string; slug: string; rateLimitRpm?: number; rawRetentionDays?: number | null }) {
+    return this.orgs.save(this.orgs.create(data as any));
   }
 
   async update(id: string, data: Partial<Organization>) {
