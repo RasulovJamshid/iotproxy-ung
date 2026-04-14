@@ -55,7 +55,7 @@ export function useSiteLatest(siteId: string) {
     queryKey: ['latest', siteId],
     queryFn: async () => {
       const { data } = await api.get(`/query/sites/${siteId}/latest`);
-      return data as Record<string, unknown>;
+      return (data?.data ?? data) as Record<string, unknown>;
     },
     refetchInterval: 30_000,
   });

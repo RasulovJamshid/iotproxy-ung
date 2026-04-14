@@ -36,7 +36,8 @@ export default function SiteDetailPage() {
   const isSysAdmin = user?.role === 'SYSTEM_ADMIN';
 
   const { data: site, isLoading: siteLoading } = useSite(id!);
-  const { data: sensors, isLoading: sensorsLoading } = useSensors(id);
+  const { data: sensorsResponse, isLoading: sensorsLoading } = useSensors(id);
+  const sensors = sensorsResponse?.data ?? [];
   const { data: latestReadings } = useSiteLatest(id!);
   const { data: allOrgs } = useAllOrganizations();
   const transition = useTransitionSite();
