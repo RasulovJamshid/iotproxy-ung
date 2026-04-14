@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookTemplate, Plus, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Layers } from 'lucide-react';
+import { BookTemplate, Plus, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Layers, Copy } from 'lucide-react';
 import { AdapterTemplate } from '@iotproxy/shared';
 import {
   useAdapterTemplates,
@@ -84,9 +84,10 @@ function TemplateCard({
   const [description, setDesc]      = useState(tpl.description ?? '');
   const [confirmDelete, setConfirm] = useState(false);
 
-  const update  = useUpdateAdapterTemplate();
-  const remove  = useDeleteAdapterTemplate();
-  const apply   = useApplyTemplate();
+  const update     = useUpdateAdapterTemplate();
+  const remove     = useDeleteAdapterTemplate();
+  const apply      = useApplyTemplate();
+  const duplicate  = useCreateAdapterTemplate();
 
   const handleSave = async () => {
     await update.mutateAsync({ id: tpl.id, data: { name, description: description || undefined } });
@@ -101,6 +102,11 @@ function TemplateCard({
     if (!selectedSiteId) return;
     await apply.mutateAsync({ siteId: selectedSiteId, templateId: tpl.id });
     onApplied?.();
+  };
+
+  const handleDuplicate = async () => {
+    const { id: _id, createdAt: _c, updatedAt: _u, organizationId: _o, ...fields } = tpl as any;
+    await duplicate.mutateAsync({ ...fields, name: `${tpl.name} (copy)` });
   };
 
   return (
@@ -149,6 +155,15 @@ function TemplateCard({
             </p>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              onClick={handleDuplicate}
+              disabled={duplicate.isPending}
+              title="Duplicate template"
+              className="p-1.5 text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
             <button
               type="button"
               onClick={() => setEditing(true)}
