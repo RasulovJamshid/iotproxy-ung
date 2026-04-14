@@ -22,6 +22,8 @@ export class SensorsController {
   @Get()
   findAll(
     @Query('siteId') siteId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {
@@ -35,7 +37,9 @@ export class SensorsController {
     
     // API key siteId restriction takes precedence over query param
     const effectiveSiteId = org?.siteId ?? siteId;
-    return this.service.findAll(effectiveSiteId, organizationId);
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? Math.min(parseInt(limit, 10), 500) : 50;
+    return this.service.findAll(effectiveSiteId, organizationId, pageNum, limitNum);
   }
 
   @Get(':id')

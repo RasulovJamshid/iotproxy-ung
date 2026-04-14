@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Sensor } from '../types';
+import type { Sensor, PaginatedResponse } from '../types';
 
-export function useSensors(siteId?: string) {
-  return useQuery<Sensor[]>({
-    queryKey: ['sensors', siteId],
+export function useSensors(siteId?: string, page = 1, limit = 50) {
+  return useQuery<PaginatedResponse<Sensor>>({
+    queryKey: ['sensors', siteId, page, limit],
     queryFn: async () => {
-      const params = siteId ? { siteId } : {};
+      const params: any = { page, limit };
+      if (siteId) params.siteId = siteId;
       return (await api.get('/sensors', { params })).data;
     },
   });

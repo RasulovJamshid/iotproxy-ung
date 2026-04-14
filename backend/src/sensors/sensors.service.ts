@@ -21,8 +21,21 @@ export class SensorsService {
 
   // ── Sensors ───────────────────────────────────────────────────────────────
 
-  findAll(siteId: string, organizationId: string) {
-    return this.sensors.find({ where: { siteId, organizationId } });
+  async findAll(siteId: string, organizationId: string, page = 1, limit = 50) {
+    const where = siteId ? { siteId, organizationId } : { organizationId };
+    const [data, total] = await this.sensors.findAndCount({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { createdAt: 'DESC' },
+    });
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string, organizationId: string) {

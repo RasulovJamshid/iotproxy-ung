@@ -22,6 +22,8 @@ export class SitesController {
   @Get()
   async findAll(
     @Query('orgId') orgIdParam?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {
@@ -41,9 +43,11 @@ export class SitesController {
     // API key scoped to a single site — return only that site
     if (org?.siteId) {
       const site = await this.service.findOne(org.siteId, organizationId);
-      return [site];
+      return { data: [site], total: 1, page: 1, limit: 1, totalPages: 1 };
     }
-    return this.service.findAll(organizationId);
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? Math.min(parseInt(limit, 10), 500) : 50;
+    return this.service.findAll(organizationId, pageNum, limitNum);
   }
 
   @Get(':id')

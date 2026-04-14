@@ -1,19 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Site } from '../types';
+import type { Site, PaginatedResponse } from '../types';
 
-export function useSites() {
-  return useQuery<Site[]>({
-    queryKey: ['sites'],
-    queryFn: async () => (await api.get('/sites')).data,
+export function useSites(page = 1, limit = 50) {
+  return useQuery<PaginatedResponse<Site>>({
+    queryKey: ['sites', page, limit],
+    queryFn: async () => (await api.get('/sites', { params: { page, limit } })).data,
   });
 }
 
 /** Fetch sites for a specific org (SYSTEM_ADMIN only). */
-export function useOrgSites(orgId?: string) {
-  return useQuery<Site[]>({
-    queryKey: ['sites', 'org', orgId],
-    queryFn: async () => (await api.get('/sites', { params: { orgId } })).data,
+export function useOrgSites(orgId?: string, page = 1, limit = 50) {
+  return useQuery<PaginatedResponse<Site>>({
+    queryKey: ['sites', 'org', orgId, page, limit],
+    queryFn: async () => (await api.get('/sites', { params: { orgId, page, limit } })).data,
     enabled: !!orgId,
   });
 }

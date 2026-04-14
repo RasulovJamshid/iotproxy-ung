@@ -16,8 +16,20 @@ export class SitesService {
     private dataSource: DataSource,
   ) {}
 
-  findAll(organizationId: string) {
-    return this.repo.find({ where: { organizationId } });
+  async findAll(organizationId: string, page = 1, limit = 50) {
+    const [data, total] = await this.repo.findAndCount({
+      where: { organizationId },
+      skip: (page - 1) * limit,
+      take: limit,
+      order: { createdAt: 'DESC' },
+    });
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string, organizationId: string) {

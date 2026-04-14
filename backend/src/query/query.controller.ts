@@ -74,8 +74,12 @@ export class QueryController {
    * Latest reading per sensor for a site — powers the "site overview" dashboard card.
    */
   @Get('sites/:siteId/latest')
+  @ApiQuery({ name: 'page', type: Number, required: false })
+  @ApiQuery({ name: 'limit', type: Number, required: false })
   async getLatest(
     @Param('siteId', ParseUUIDPipe) siteId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {
@@ -88,9 +92,19 @@ export class QueryController {
     }
     
     const effectiveSiteId = org?.siteId ?? siteId;
-    const sensors = await this.sensors.findAll(effectiveSiteId, organizationId);
-    const ids = sensors.map((s) => s.id);
-    return this.timescale.getLatestPerSensor(ids);
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? Math.min(parseInt(limit, 10), 500) : 50;
+    const sensorsResult = await this.sensors.findAll(effectiveSiteId, organizationId, pageNum, limitNum);
+    const ids = sensorsResult.data.map((s) => s.id);
+    const readings = await this.timescale.getLatestPerSensor(ids);
+    
+    return {
+      data: readings,
+      total: sensorsResult.total,
+      page: sensorsResult.page,
+      limit: sensorsResult.limit,
+      totalPages: sensorsResult.totalPages,
+    };
   }
 
   /**
