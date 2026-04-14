@@ -112,8 +112,8 @@ export default function DashboardPage() {
 
   if (sitesQuery.isLoading || sensorsQuery.isLoading) return <PageSpinner />;
 
-  const siteList = sitesQuery.data ?? [];
-  const sensorList = sensorsQuery.data ?? [];
+  const siteList = sitesQuery.data?.data ?? [];
+  const sensorList = sensorsQuery.data?.data ?? [];
   const eventList = eventsQuery.data ?? [];
 
   const activeSites = siteList.filter((s) => s.commissioningStatus === 'ACTIVE').length;
