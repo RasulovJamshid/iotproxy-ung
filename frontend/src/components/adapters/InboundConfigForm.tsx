@@ -272,9 +272,10 @@ function InboundSamples() {
 interface Props {
   siteId: string;
   adapter?: SiteAdapter;
+  onTemplateSaved?: () => void;
 }
 
-export function InboundConfigForm({ siteId, adapter }: Props) {
+export function InboundConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [readingsPath, setReadingsPath] = useState('');
   const [sensorIdPath, setSensorIdPath] = useState('$.sensorId');
@@ -434,7 +435,11 @@ export function InboundConfigForm({ siteId, adapter }: Props) {
       </div>
 
       {showTemplateModal && (
-        <SaveAsTemplateModal siteId={siteId} onClose={() => setShowTemplateModal(false)} />
+        <SaveAsTemplateModal 
+          siteId={siteId} 
+          onClose={() => setShowTemplateModal(false)}
+          onSuccess={onTemplateSaved}
+        />
       )}
     </form>
   );

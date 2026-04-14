@@ -8,6 +8,7 @@ import { SchemaDiscoveryWizard } from './SchemaDiscoveryWizard';
 interface Props {
   siteId: string;
   adapter?: SiteAdapter;
+  onTemplateSaved?: () => void;
 }
 
 type KVPair = { key: string; value: string };
@@ -372,7 +373,7 @@ function PullSamples() {
   );
 }
 
-export function PullConfigForm({ siteId, adapter }: Props) {
+export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [url, setUrl] = useState('');
   const [method, setMethod] = useState<'GET' | 'POST'>('GET');
@@ -868,7 +869,11 @@ export function PullConfigForm({ siteId, adapter }: Props) {
       </div>
 
       {showTemplateModal && (
-        <SaveAsTemplateModal siteId={siteId} onClose={() => setShowTemplateModal(false)} />
+        <SaveAsTemplateModal 
+          siteId={siteId} 
+          onClose={() => setShowTemplateModal(false)}
+          onSuccess={onTemplateSaved}
+        />
       )}
     </form>
   );

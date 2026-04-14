@@ -205,9 +205,17 @@ export function AdaptersPage() {
           ) : adapterLoading ? (
             <div className="text-center text-gray-500 dark:text-slate-400 py-8">Loading adapter...</div>
           ) : activeTab === 'inbound' ? (
-            <InboundConfigForm siteId={selectedSiteId} adapter={adapter} />
+            <InboundConfigForm 
+              siteId={selectedSiteId} 
+              adapter={adapter}
+              onTemplateSaved={() => setActiveTab('templates')}
+            />
           ) : (
-            <PullConfigForm siteId={selectedSiteId} adapter={adapter} />
+            <PullConfigForm 
+              siteId={selectedSiteId} 
+              adapter={adapter}
+              onTemplateSaved={() => setActiveTab('templates')}
+            />
           )}
         </div>
       </div>

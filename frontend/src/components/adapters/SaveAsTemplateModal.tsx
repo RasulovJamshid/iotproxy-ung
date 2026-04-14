@@ -1,25 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BookTemplate, X } from 'lucide-react';
 import { useSaveAsTemplate } from '../../hooks/useAdapterTemplates';
 
 interface Props {
   siteId: string;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export function SaveAsTemplateModal({ siteId, onClose }: Props) {
+export function SaveAsTemplateModal({ siteId, onClose, onSuccess }: Props) {
   const [name, setName]       = useState('');
   const [description, setDesc] = useState('');
   const [saved, setSaved]      = useState(false);
 
   const save = useSaveAsTemplate();
 
+  useEffect(() => {
+    // Scroll modal into view when it opens
+    setTimeout(() => {
+      const modal = document.querySelector('[data-modal="save-template"]');
+      if (modal) {
+        modal.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     await save.mutateAsync({ siteId, name: name.trim(), description: description.trim() || undefined });
     setSaved(true);
-    setTimeout(onClose, 1200);
+    setTimeout(() => {
+      onClose();
+      onSuccess?.();
+    }, 1200);
   };
 
   return (
@@ -28,7 +42,10 @@ export function SaveAsTemplateModal({ siteId, onClose }: Props) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-md mx-4 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div 
+        data-modal="save-template"
+        className="w-full max-w-md mx-4 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2">
