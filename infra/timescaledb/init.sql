@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
   correlation_id    UUID,
   -- Generated dedup key: sensor + timestamp (idempotency)
   dedup_key         TEXT GENERATED ALWAYS AS
-    (sensor_id::text || '|' || phenomenon_time::text) STORED,
+    (sensor_id::text || '|' || extract(epoch from phenomenon_time)::text) STORED,
   PRIMARY KEY (id, phenomenon_time)   -- compound PK required for hypertable partitioning
 );
 

@@ -30,6 +30,7 @@ export default defineConfig(({ mode }: { mode: string }) => {
     },
     server: {
       port: 5173,
+      allowedHosts: ['iotproxy.ung.uz'],
       // Enable SPA fallback - serve index.html for all non-API routes
       historyApiFallback: {
         rewrites: [

@@ -99,7 +99,7 @@ $RECYCLE.BIN/
 # Docker
 .dockerignore
 docker-compose.override.yml
-
+docker-compose.prod.yml
 # Misc
 .eslintcache
 .stylelintcache
