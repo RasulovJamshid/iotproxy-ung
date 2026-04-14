@@ -49,7 +49,8 @@ export default function SensorDetailPage() {
   const deleteReading = useDeleteReading();
   const clearAllReadings = useClearAllReadings();
   const transferSensor = useTransferSensor();
-  const { data: allSites } = useSites();
+  const { data: allSitesResponse } = useSites();
+  const allSites = allSitesResponse?.data ?? [];
   const [editingExternalId, setEditingExternalId] = useState(false);
   const [externalIdDraft, setExternalIdDraft] = useState('');
   const [editingInfo, setEditingInfo] = useState(false);

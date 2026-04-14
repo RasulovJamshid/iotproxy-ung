@@ -45,8 +45,10 @@ function StatCard({ label, value, sub, accent = false }: { label: string; value:
 }
 
 export default function SensorsPage() {
-  const { data: sensors = [], isLoading } = useSensors();
-  const { data: sites } = useSites();
+  const { data: sensorsResponse, isLoading } = useSensors();
+  const sensors = sensorsResponse?.data ?? [];
+  const { data: sitesResponse } = useSites();
+  const sites = sitesResponse?.data ?? [];
   const updateStatus = useUpdateSensorStatus();
   const softDelete = useSoftDeleteSensor();
   const hardDelete = useHardDeleteSensor();
