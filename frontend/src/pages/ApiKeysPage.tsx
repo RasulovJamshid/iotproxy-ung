@@ -463,14 +463,16 @@ interface ScopeBuilderProps {
 
 function ScopeBuilder({ isSysAdmin, myOrgId, scopeType, onScopeTypeChange, scopes, onScopesChange }: ScopeBuilderProps) {
   const { data: allOrgs } = useAllOrganizations();
-  const { data: ownSites } = useSites();
+  const { data: ownSitesResponse } = useSites();
+  const ownSites = ownSitesResponse?.data ?? [];
 
   const [pickerOrgId, setPickerOrgId] = useState('');
   const [pickerSiteId, setPickerSiteId] = useState('');
 
   // For SYSTEM_ADMIN: load sites for the selected org dynamically
-  const { data: orgSites } = useOrgSites(isSysAdmin ? pickerOrgId : undefined);
-  const sitesForPicker = isSysAdmin ? (orgSites ?? []) : (ownSites ?? []);
+  const { data: orgSitesResponse } = useOrgSites(isSysAdmin ? pickerOrgId : undefined);
+  const orgSites = orgSitesResponse?.data ?? [];
+  const sitesForPicker = isSysAdmin ? orgSites : ownSites;
 
   const removeScope = (idx: number) => onScopesChange(scopes.filter((_, i) => i !== idx));
 
@@ -626,7 +628,8 @@ export default function ApiKeysPage() {
   const isSysAdmin = user?.role === 'SYSTEM_ADMIN';
 
   const { data: keys = [], isLoading } = useApiKeys();
-  const { data: sites = [] } = useSites();
+  const { data: sitesResponse } = useSites();
+  const sites = sitesResponse?.data ?? [];
   const { data: orgs = [] } = useAllOrganizations();
   const create = useCreateApiKey();
   const update = useUpdateApiKey();

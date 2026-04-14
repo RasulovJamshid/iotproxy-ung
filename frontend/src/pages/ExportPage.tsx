@@ -13,7 +13,8 @@ const toDatetimeLocal = (d: Date) => d.toISOString().slice(0, 16);
 
 export default function ExportPage() {
   const { data: exports, isLoading } = useExports();
-  const { data: sites } = useSites();
+  const { data: sitesResponse } = useSites();
+  const sites = sitesResponse?.data;
   const createExport = useCreateExport();
   const { download, downloading } = useDownloadExport();
 

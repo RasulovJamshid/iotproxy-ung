@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const SERVER_ERROR_EVENT = 'iotproxy:server-error';
 const SERVER_RECOVERED_EVENT = 'iotproxy:server-recovered';
+export const FORCE_LOGOUT_EVENT = 'iotproxy:force-logout';
 
 // Debounce timer — only emit server error if the failure persists for >3 s.
 // This prevents transient errors from triggering the full-page error state and
@@ -29,6 +30,14 @@ function emitServerRecovered() {
   window.dispatchEvent(new Event(SERVER_RECOVERED_EVENT));
 }
 
+function forceLogout() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+  localStorage.removeItem('orgs');
+  window.dispatchEvent(new Event(FORCE_LOGOUT_EVENT));
+}
+
 export const api = axios.create({
   baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
@@ -51,8 +60,7 @@ function doRefresh(): Promise<string> {
 
   const refreshToken = localStorage.getItem('refreshToken');
   if (!refreshToken) {
-    localStorage.clear();
-    window.location.href = '/login';
+    forceLogout();
     return Promise.reject(new Error('No refresh token'));
   }
 
@@ -64,8 +72,7 @@ function doRefresh(): Promise<string> {
       return data.accessToken as string;
     })
     .catch((e) => {
-      localStorage.clear();
-      window.location.href = '/login';
+      forceLogout();
       throw e;
     })
     .finally(() => {
@@ -91,6 +98,12 @@ api.interceptors.response.use(
       } catch {
         return Promise.reject(err);
       }
+    }
+
+    // Retry already attempted but still 401 — force logout
+    if (err.response?.status === 401 && err.config._retry) {
+      forceLogout();
+      return Promise.reject(err);
     }
 
     const status = err.response?.status as number | undefined;

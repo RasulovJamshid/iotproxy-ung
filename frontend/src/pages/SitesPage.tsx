@@ -39,7 +39,8 @@ function StatCard({ label, value, sub, accent = false }: { label: string; value:
 }
 
 export default function SitesPage() {
-  const { data: sites = [], isLoading } = useSites();
+  const { data: sitesResponse, isLoading } = useSites();
+  const sites = sitesResponse?.data ?? [];
   const createSite = useCreateSite();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');

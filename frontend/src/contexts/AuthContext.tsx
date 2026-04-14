@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { api } from '../api/client';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { api, FORCE_LOGOUT_EVENT } from '../api/client';
 import { disconnectSocket } from '../api/ws-client';
 import { queryClient } from '../App';
 
@@ -79,6 +79,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.clear();
     disconnectSocket();
     setState({ accessToken: null, user: null, orgs: [] });
+  }, []);
+
+  // Listen for forced logout from the API interceptor (e.g. 401 after refresh failed)
+  useEffect(() => {
+    const onForceLogout = () => {
+      disconnectSocket();
+      setState({ accessToken: null, user: null, orgs: [] });
+    };
+    window.addEventListener(FORCE_LOGOUT_EVENT, onForceLogout);
+    return () => window.removeEventListener(FORCE_LOGOUT_EVENT, onForceLogout);
   }, []);
 
   return (

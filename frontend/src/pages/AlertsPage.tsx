@@ -60,7 +60,8 @@ function StatCard({ label, value, sub, accent = false, error = false }: { label:
 export default function AlertsPage() {
   const { data: rules = [], isLoading: rulesLoading } = useAlertRules();
   const { data: events = [], isLoading: eventsLoading } = useAlertEvents();
-  const { data: sensors = [] } = useSensors();
+  const { data: sensorsResponse } = useSensors();
+  const sensors = sensorsResponse?.data ?? [];
   const createRule = useCreateAlertRule();
   const updateRule = useUpdateAlertRule();
   const deleteRule = useDeleteAlertRule();

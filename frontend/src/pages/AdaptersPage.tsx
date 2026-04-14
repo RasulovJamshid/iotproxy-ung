@@ -9,7 +9,8 @@ import { TemplatesPanel } from '../components/adapters/TemplatesPanel';
 type Tab = 'inbound' | 'pull' | 'templates';
 
 export function AdaptersPage() {
-  const { data: sites, isLoading: sitesLoading } = useSites();
+  const { data: sitesResponse, isLoading: sitesLoading } = useSites();
+  const sites = sitesResponse?.data;
   const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>();
   const [activeTab, setActiveTab] = useState<Tab>('inbound');
 
