@@ -21,9 +21,6 @@ CREATE TABLE IF NOT EXISTS sensor_readings (
   pipeline_flags    TEXT[]      DEFAULT '{}',
   config_version_id UUID,
   correlation_id    UUID,
-  -- Generated dedup key: sensor + timestamp (idempotency)
-  dedup_key         TEXT GENERATED ALWAYS AS
-    (sensor_id::text || '|' || extract(epoch from phenomenon_time)::text) STORED,
   PRIMARY KEY (id, phenomenon_time)   -- compound PK required for hypertable partitioning
 );
 
@@ -35,7 +32,7 @@ SELECT create_hypertable(
 
 -- Idempotency: duplicate (sensor_id, phenomenon_time) pairs silently ignored
 CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_dedup
-  ON sensor_readings (dedup_key);
+  ON sensor_readings (sensor_id, phenomenon_time);
 
 -- Fast per-sensor time-range scans (most common query pattern)
 CREATE INDEX IF NOT EXISTS idx_readings_sensor_time
