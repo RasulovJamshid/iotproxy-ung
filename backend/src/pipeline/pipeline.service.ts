@@ -33,10 +33,15 @@ export class PipelineService {
     // Resolve external IDs → internal UUID if sensorId is not a UUID
     let sensorId = raw.sensorId;
     if (!UUID_RE.test(sensorId)) {
-      const sensor = await this.sensorRepo.findOne({ where: { externalId: sensorId } });
+      const sensor = await this.sensorRepo.findOne({ 
+        where: { 
+          externalId: sensorId,
+          siteId: raw.siteId 
+        } 
+      });
       if (!sensor) {
         this.logger.warn(
-          `Dropping reading: sensorId "${sensorId}" is not a UUID and no sensor with that externalId exists`,
+          `Dropping reading: sensorId "${sensorId}" is not a UUID and no sensor with that externalId exists for site ${raw.siteId}`,
         );
         return null;
       }
