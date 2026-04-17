@@ -113,7 +113,7 @@ export class MqttIngestService implements OnModuleInit, OnModuleDestroy {
       let jobs: IngestJob[];
 
       if (adapter?.inboundEnabled && adapter.inboundMapping) {
-        const mapped = normalizeInbound(items, adapter.inboundMapping, siteId);
+        const mapped = await normalizeInbound(items, adapter.inboundMapping, siteId);
         jobs = mapped.map((r) => ({
           sensorId: r.sensorId,
           phenomenonTime: r.phenomenonTime,

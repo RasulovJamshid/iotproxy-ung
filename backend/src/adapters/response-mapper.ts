@@ -1,4 +1,5 @@
 import { InboundMapping, FieldMapping, ResponseMapping } from './site-adapter.entity';
+import { evaluateJsonata, coerceReadings } from './jsonata-mapper';
 
 // ── Path resolver ─────────────────────────────────────────────────────────────
 // Supports: $.field  $.a.b.c  $.items[*]  $.a.b[*]
@@ -91,13 +92,33 @@ export interface MappedReading {
 
 /**
  * Normalize an inbound pushed payload using the site's InboundMapping.
- * Returns an array of normalized readings from a single-site push.
+ *
+ * Supports two modes:
+ *  - JSONata: if `mapping.jsonataExpression` is set, evaluates the expression
+ *    against the full payload. Expression receives `$siteId` binding.
+ *  - JSONPath (default): extracts fields using simple path expressions.
  */
-export function normalizeInbound(
+export async function normalizeInbound(
   payload: unknown,
   mapping: InboundMapping,
   siteId: string,
-): MappedReading[] {
+): Promise<MappedReading[]> {
+  // ── JSONata mode ────────────────────────────────────────────────────────────
+  if (mapping.jsonataExpression) {
+    const raw = await evaluateJsonata(
+      mapping.jsonataExpression,
+      payload,
+      { siteId },
+    );
+    return coerceReadings(raw).map((r) => ({
+      siteId: r.siteId ?? siteId,
+      sensorId: r.sensorId,
+      phenomenonTime: r.phenomenonTime ?? new Date().toISOString(),
+      data: r.data ?? {},
+    }));
+  }
+
+  // ── JSONPath mode ───────────────────────────────────────────────────────────
   const items = mapping.readingsPath
     ? (getPath(payload, mapping.readingsPath) as unknown[])
     : Array.isArray(payload) ? payload : [payload];
@@ -115,14 +136,39 @@ export function normalizeInbound(
 
 /**
  * Map a pull response using the adapter's ResponseMapping.
- * Handles both single-site and multi-site modes.
- * For multi-site, `siteResolver` maps identifier → internal UUID.
+ *
+ * Supports two modes:
+ *  - JSONata: if `mapping.jsonataExpression` is set, the full response is the
+ *    expression input. For single-site, siteId is auto-injected if absent.
+ *  - JSONPath (default): handles both single-site and multi-site modes.
  */
-export function mapPullResponse(
+export async function mapPullResponse(
   response: unknown,
   mapping: ResponseMapping,
   siteResolver: (identifier: string) => string | undefined,
-): MappedReading[] {
+): Promise<MappedReading[]> {
+  // ── JSONata mode ────────────────────────────────────────────────────────────
+  if (mapping.jsonataExpression) {
+    const raw = await evaluateJsonata(mapping.jsonataExpression, response, {});
+    const readings = coerceReadings(raw);
+
+    return readings
+      .map((r) => {
+        const resolvedSiteId =
+          r.siteId ??
+          (mapping.mode === 'single-site' ? mapping.siteId : undefined);
+        if (!resolvedSiteId) return null;
+        return {
+          siteId: resolvedSiteId,
+          sensorId: r.sensorId,
+          phenomenonTime: r.phenomenonTime ?? new Date().toISOString(),
+          data: r.data ?? {},
+        };
+      })
+      .filter((r): r is MappedReading => r !== null);
+  }
+
+  // ── JSONPath mode ───────────────────────────────────────────────────────────
   const results: MappedReading[] = [];
 
   if (mapping.mode === 'single-site') {

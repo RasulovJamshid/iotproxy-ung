@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { SiteAdapter } from './site-adapter.entity';
 import { QUEUE_NAMES } from '@iotproxy/shared';
+import { evaluateJsonata, coerceReadings } from './jsonata-mapper';
 
 @Injectable()
 export class AdaptersService {
@@ -101,6 +102,28 @@ export class AdaptersService {
     for (const adapter of adapters) {
       await this.syncPullJob(adapter);
     }
+  }
+
+  // ── JSONata evaluation ────────────────────────────────────────────────────
+
+  /**
+   * Evaluate a JSONata expression against a sample payload and return both
+   * the raw result and the normalized readings array so the UI can preview
+   * what the adapter would produce.
+   */
+  async evaluateJsonata(
+    expression: string,
+    sample: unknown,
+    siteId?: string,
+  ): Promise<{ result: unknown; readings: unknown[] }> {
+    let result: unknown;
+    try {
+      result = await evaluateJsonata(expression, sample, siteId ? { siteId } : {});
+    } catch (err) {
+      throw new BadRequestException(`JSONata evaluation error: ${(err as Error).message}`);
+    }
+    const readings = coerceReadings(result);
+    return { result, readings };
   }
 
   // ── Schema Discovery ──────────────────────────────────────────────────────

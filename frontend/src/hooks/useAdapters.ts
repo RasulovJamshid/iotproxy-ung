@@ -73,6 +73,25 @@ export function useDiscoverSchema() {
   });
 }
 
+export interface JsonataEvalResult {
+  result: unknown;
+  readings: Array<{
+    sensorId: string;
+    phenomenonTime: string;
+    data: Record<string, unknown>;
+    siteId?: string;
+  }>;
+}
+
+export function useEvaluateJsonata() {
+  return useMutation({
+    mutationFn: async (params: { expression: string; sample: unknown; siteId?: string }) => {
+      const res = await api.post('/adapters/evaluate-jsonata', params);
+      return res.data as JsonataEvalResult;
+    },
+  });
+}
+
 export interface DiscoveredField {
   key: string;
   jsonPath: string;

@@ -107,14 +107,25 @@ export interface IngestJob extends RawIngestPayload {
 // ── Site Adapters ────────────────────────────────────────────────────────────
 
 export interface FieldMapping {
-  sensorId:       string;
-  phenomenonTime: string;
-  data:           string | Record<string, string>;
+  sensorId:           string;
+  phenomenonTime:     string;
+  data:               string | Record<string, string>;
+  discriminatorField?:  string;
+  discriminatorSuffix?: string;
 }
 
 export interface InboundMapping {
   readingsPath?: string;
   fields:        FieldMapping;
+  /**
+   * JSONata expression mode.
+   * When set, the entire payload is passed as the expression input.
+   * The expression must return an array (or single object) with shape:
+   *   { sensorId, phenomenonTime, data: Record<string,unknown> }
+   * The `readingsPath` and `fields` config is ignored in this mode.
+   * Available binding: $siteId (the site's internal UUID).
+   */
+  jsonataExpression?: string;
 }
 
 export interface ResponseMapping {
@@ -125,6 +136,16 @@ export interface ResponseMapping {
   siteIdResolver?: 'by-id' | 'by-name';
   readingsPath: string;
   fields:       FieldMapping;
+  /**
+   * JSONata expression mode.
+   * When set, the entire API response is passed as the expression input.
+   * The expression must return an array (or single object) with shape:
+   *   { sensorId, phenomenonTime, data: Record<string,unknown>, siteId?: string }
+   * For single-site mode, siteId is auto-injected if absent.
+   * For multi-site mode, include siteId in each result object.
+   * The JSONPath fields config is ignored in this mode.
+   */
+  jsonataExpression?: string;
 }
 
 export type PullAuthType = 'none' | 'apiKey' | 'bearerToken' | 'basicAuth';

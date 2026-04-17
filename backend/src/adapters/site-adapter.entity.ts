@@ -7,35 +7,43 @@ import { Site } from '../sites/site.entity';
 // ── Mapping type definitions ──────────────────────────────────────────────────
 
 export interface FieldMapping {
-  sensorId:          string;  // JSONPath within each reading item
-  /** Optional: combine sensorId field with a discriminator field to create unique sensor IDs.
-   *  E.g. if each row has a "product_type" field, set discriminatorField to "$.Классификатор"
-   *  and the resulting sensorId becomes "<sensorId_value>:<discriminator_value>"
-   */
-  discriminatorField?: string; // JSONPath to the field that differentiates sensor types within an item
-  discriminatorSuffix?: string; // static suffix to add instead of a dynamic field (mutually exclusive with discriminatorField)
-  phenomenonTime:    string;
-  data:              string | Record<string, string>; // single path OR { field: path }
+  sensorId:           string;  // JSONPath within each reading item
+  /** Optional: combine sensorId field with a discriminator field to create unique sensor IDs. */
+  discriminatorField?:  string;
+  discriminatorSuffix?: string;
+  phenomenonTime:     string;
+  data:               string | Record<string, string>;
 }
 
 export interface InboundMapping {
-  readingsPath?: string; // optional: path to readings array in pushed payload
+  readingsPath?: string;
   fields:        FieldMapping;
+  /**
+   * JSONata expression mode.
+   * When set, the entire payload is the expression input.
+   * Must return: { sensorId, phenomenonTime, data }[]
+   * Binding available: $siteId
+   * Ignores readingsPath and fields when set.
+   */
+  jsonataExpression?: string;
 }
 
 export interface ResponseMapping {
   mode: 'single-site' | 'multi-site';
-
-  // single-site: all readings belong to this site
   siteId?: string;
-
-  // multi-site: response contains data for multiple sites
-  sitesPath?:      string; // path to array of site blocks
-  siteIdPath?:     string; // path within each site block to extract site identifier
-  siteIdResolver?: 'by-id' | 'by-name'; // 'by-id' = value IS uuid; 'by-name' = look up by site name
-
-  readingsPath: string; // path to readings array (absolute for single-site, relative to site block for multi-site)
+  sitesPath?:      string;
+  siteIdPath?:     string;
+  siteIdResolver?: 'by-id' | 'by-name';
+  readingsPath: string;
   fields:       FieldMapping;
+  /**
+   * JSONata expression mode.
+   * When set, the entire API response is the expression input.
+   * Must return: { sensorId, phenomenonTime, data, siteId? }[]
+   * For single-site, siteId is auto-injected if absent from each result.
+   * Ignores JSONPath fields when set.
+   */
+  jsonataExpression?: string;
 }
 
 export type PullAuthType = 'none' | 'apiKey' | 'bearerToken' | 'basicAuth';

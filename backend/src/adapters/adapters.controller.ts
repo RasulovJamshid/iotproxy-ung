@@ -68,7 +68,7 @@ export class AdaptersController {
     return this.templatesService.create(user.organizationId, {
       name: body.name,
       description: body.description,
-      inboundMapping: adapter.inboundMapping,
+      inboundMapping: adapter.inboundMapping,   // jsonataExpression stored inside
       pullMethod: adapter.pullMethod,
       pullHeaders: adapter.pullHeaders,
       pullQueryParams: adapter.pullQueryParams,
@@ -79,7 +79,7 @@ export class AdaptersController {
         : undefined,
       pullBodyTemplate: adapter.pullBodyTemplate,
       pullIntervalSec: adapter.pullIntervalSec,
-      responseMapping: adapter.responseMapping,
+      responseMapping: adapter.responseMapping,  // jsonataExpression stored inside
     });
   }
 
@@ -115,5 +115,18 @@ export class AdaptersController {
   @Roles('ADMIN')
   discover(@Body() body: { sample: unknown }) {
     return this.service.discoverSchema(body.sample);
+  }
+
+  /**
+   * Evaluate a JSONata expression against a sample payload.
+   * Returns both the raw expression result and the normalized readings array.
+   * Use this to test expressions before saving adapter config.
+   */
+  @Post('evaluate-jsonata')
+  @Roles('ADMIN')
+  evaluateJsonata(
+    @Body() body: { expression: string; sample: unknown; siteId?: string },
+  ) {
+    return this.service.evaluateJsonata(body.expression, body.sample, body.siteId);
   }
 }

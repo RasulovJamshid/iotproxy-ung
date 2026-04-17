@@ -94,7 +94,7 @@ export class PullWorker extends WorkerHost implements OnModuleInit {
       // (For multi-site by-name, the caller must populate siteNameCache externally;
       //  by-id mode works without this and is the default.)
 
-      const readings = mapPullResponse(responseBody, adapter.responseMapping, siteResolver);
+      const readings = await mapPullResponse(responseBody, adapter.responseMapping, siteResolver);
 
       if (readings.length === 0) {
         this.logger.warn(`Pull ${adapter.id}: response mapped to 0 readings`);
