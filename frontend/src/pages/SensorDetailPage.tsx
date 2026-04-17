@@ -68,6 +68,7 @@ export default function SensorDetailPage() {
   const { data: sensorConfig } = useSensorConfig(id);
   const { actualTheme } = useTheme();
   const [rangeHours, setRangeHours] = useState(24);
+  const [rawRangeHours, setRawRangeHours] = useState(24);
   const [bottomTab, setBottomTab] = useState<'readings' | 'alerts' | 'config' | 'virtual'>('readings');
   const [virtualOpen, setVirtualOpen] = useState(false);
   const [vName, setVName] = useState('');
@@ -99,7 +100,7 @@ export default function SensorDetailPage() {
   });
   const { data: site } = useSite(sensor?.siteId ?? '');
   const { data: events } = useAlertEvents(id);
-  const { data: rawReadings, isLoading: rawLoading } = useRawReadings(id!, 24, 100);
+  const { data: rawReadings, isLoading: rawLoading } = useRawReadings(id!, rawRangeHours, 100);
 
   const isDark = actualTheme === 'dark';
   const chartTickColor  = isDark ? '#64748b' : '#94a3b8';
@@ -428,11 +429,27 @@ export default function SensorDetailPage() {
         </div>
 
         {bottomTab === 'readings' && (() => {
+          const rawRangeLabel = RANGES.find((r) => r.hours === rawRangeHours)?.label ?? `${rawRangeHours}h`;
           if (rawLoading) return <PageSpinner />;
           if (!rawReadings || rawReadings.length === 0) {
             return (
               <div>
-                <div className="flex justify-end mb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-1">
+                    {RANGES.map((r) => (
+                      <button
+                        key={r.label}
+                        onClick={() => setRawRangeHours(r.hours)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                          rawRangeHours === r.hours
+                            ? 'bg-blue-600 dark:bg-blue-500 text-white'
+                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
                   <button
                     onClick={async () => {
                       const alphanumeric = sensor.name.replace(/[^a-zA-Z0-9]/g, '');
@@ -456,7 +473,7 @@ export default function SensorDetailPage() {
                     Clear All Readings
                   </button>
                 </div>
-                <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">No readings in the last 24 hours.</p>
+                <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">No readings in the last {rawRangeLabel}.</p>
               </div>
             );
           }
@@ -466,7 +483,22 @@ export default function SensorDetailPage() {
           );
           return (
             <div>
-              <div className="flex justify-end mb-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-1">
+                  {RANGES.map((r) => (
+                    <button
+                      key={r.label}
+                      onClick={() => setRawRangeHours(r.hours)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                        rawRangeHours === r.hours
+                          ? 'bg-blue-600 dark:bg-blue-500 text-white'
+                          : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
                 <button
                   onClick={async () => {
                     const alphanumeric = sensor.name.replace(/[^a-zA-Z0-9]/g, '');

@@ -112,16 +112,41 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
   async queryTimeSeries(params: TimeSeriesQueryParams) {
     const rangeMs = params.endTs.getTime() - params.startTs.getTime();
+    const now = Date.now();
+    const oneHourAgo = now - 3_600_000;
+    const oneDayAgo = now - 86_400_000;
     const sixHours = 6 * 3_600_000;
     const sevenDays = 7 * 86_400_000;
 
-    if (params.agg === 'NONE' || rangeMs < sixHours) {
+    // Always use raw data if aggregation is disabled
+    if (params.agg === 'NONE') {
       return this.queryRaw(params);
-    } else if (rangeMs < sevenDays) {
-      return this.queryAggregate('readings_1h', 'bucket', params);
-    } else {
+    }
+
+    // readings_1h only contains data older than 1 hour (due to end_offset policy)
+    // If query includes data from the last hour, use raw data but transform to aggregate format
+    if (params.endTs.getTime() > oneHourAgo) {
+      return this.transformRawToAggregate(params);
+    }
+
+    // For small ranges, use raw data transformed to aggregates
+    if (rangeMs < sixHours) {
+      return this.transformRawToAggregate(params);
+    }
+
+    // readings_1d only contains data older than 1 day (due to end_offset policy)
+    // If query includes data from the last day, use hourly aggregate or raw
+    if (rangeMs >= sevenDays) {
+      if (params.endTs.getTime() > oneDayAgo) {
+        // Query spans multiple days but includes recent data - use hourly
+        return this.queryAggregate('readings_1h', 'bucket', params);
+      }
+      // All data is older than 1 day - safe to use daily aggregate
       return this.queryAggregate('readings_1d', 'bucket', params);
     }
+
+    // Range is 6h-7d and data is older than 1 hour - use hourly aggregate
+    return this.queryAggregate('readings_1h', 'bucket', params);
   }
 
   async getLatestPerSensor(
@@ -248,6 +273,64 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
+  private extractNumericValue(processedData: any): number | null {
+    if (!processedData || typeof processedData !== 'object') return null;
+    
+    // Try common field names first
+    const commonFields = ['value', 'temperature', 'humidity', 'pressure', 'voltage', 'current', 'power'];
+    for (const field of commonFields) {
+      if (processedData[field] !== undefined && processedData[field] !== null) {
+        const val = Number(processedData[field]);
+        if (!isNaN(val)) return val;
+      }
+    }
+    
+    // Fallback: find first numeric value in any field
+    for (const key in processedData) {
+      const val = Number(processedData[key]);
+      if (!isNaN(val)) return val;
+    }
+    
+    return null;
+  }
+
+  private async transformRawToAggregate(params: TimeSeriesQueryParams) {
+    // Get raw data
+    const rawData = await this.queryRaw(params);
+    
+    // Group raw readings into buckets and compute aggregates
+    const bucketMap = new Map<number, number[]>();
+    const bucketSize = (params.intervalMs ?? 3_600_000);
+    
+    for (const row of rawData) {
+      const timestamp = new Date(row.phenomenon_time).getTime();
+      const bucketTime = Math.floor(timestamp / bucketSize) * bucketSize;
+      
+      // Extract numeric value from processed_data
+      const value = this.extractNumericValue(row.processed_data);
+      if (value !== null) {
+        if (!bucketMap.has(bucketTime)) {
+          bucketMap.set(bucketTime, []);
+        }
+        bucketMap.get(bucketTime)!.push(value);
+      }
+    }
+    
+    // Convert buckets to aggregate format
+    const aggregates = Array.from(bucketMap.entries())
+      .map(([bucketTime, values]) => ({
+        bucket: new Date(bucketTime),
+        avg_val: values.reduce((a, b) => a + b, 0) / values.length,
+        min_val: Math.min(...values),
+        max_val: Math.max(...values),
+        sample_count: values.length,
+      }))
+      .sort((a, b) => b.bucket.getTime() - a.bucket.getTime())
+      .slice(0, params.limit ?? 1000);
+    
+    return aggregates;
+  }
+
   private async queryRaw(params: TimeSeriesQueryParams) {
     const args: unknown[] = [params.sensorId, params.startTs, params.endTs];
     let cursorClause = '';
@@ -287,28 +370,34 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
     const intervalSec = Math.floor((params.intervalMs ?? 3_600_000) / 1000);
 
-    const result = await this.pool.query(
-      `SELECT time_bucket($1::interval, ${timeCol}) AS bucket,
-              AVG(avg_val) AS avg_val,
-              MIN(min_val) AS min_val,
-              MAX(max_val) AS max_val,
-              SUM(sample_count) AS sample_count
-       FROM ${view}
-       WHERE sensor_id = $2
-         AND ${timeCol} >= $3
-         AND ${timeCol} <= $4
-       GROUP BY 1
-       ORDER BY 1 DESC
-       LIMIT $5`,
-      [
-        `${intervalSec} seconds`,
-        params.sensorId,
-        params.startTs,
-        params.endTs,
-        params.limit ?? 1000,
-      ],
-    );
+    try {
+      const result = await this.pool.query(
+        `SELECT time_bucket($1::interval, ${timeCol}) AS bucket,
+                AVG(avg_val) AS avg_val,
+                MIN(min_val) AS min_val,
+                MAX(max_val) AS max_val,
+                SUM(sample_count) AS sample_count
+         FROM ${view}
+         WHERE sensor_id = $2
+           AND ${timeCol} >= $3
+           AND ${timeCol} <= $4
+         GROUP BY 1
+         ORDER BY 1 DESC
+         LIMIT $5`,
+        [
+          `${intervalSec} seconds`,
+          params.sensorId,
+          params.startTs,
+          params.endTs,
+          params.limit ?? 1000,
+        ],
+      );
 
-    return result.rows;
+      return result.rows;
+    } catch (err) {
+      // If aggregate query fails (e.g., view not populated yet), fallback to raw data
+      this.logger.warn(`Aggregate query failed for ${view}, falling back to raw data: ${err instanceof Error ? err.message : String(err)}`);
+      return this.transformRawToAggregate(params);
+    }
   }
 }
