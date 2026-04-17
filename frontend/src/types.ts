@@ -39,6 +39,20 @@ export interface Site {
   updatedAt: string;
 }
 
+export interface SensorType {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+}
+
+export interface SensorCategory {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+}
+
 export interface Sensor {
   id: string;
   organizationId: string;
@@ -46,6 +60,10 @@ export interface Sensor {
   name: string;
   externalId?: string;
   description?: string;
+  typeId?: string;
+  type?: SensorType;
+  categoryId?: string;
+  category?: SensorCategory;
   status: string;
   connectivityStatus: string;
   lastReadingAt?: string;

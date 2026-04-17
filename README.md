@@ -50,6 +50,7 @@ The frontend proxy is environment-driven:
 
 ## Documentation
 
+- **[Environment Setup](./docs/ENV_SETUP.md)** - Configure environment variables for local and Docker deployments
 - **[Dev Server Setup](./docs/DEV_SETUP.md)** - Start the full stack locally with one admin user
 - **[Production Server Setup](./docs/PROD_SETUP.md)** - Deploy to a production server with HTTPS and one admin user
 - **[Quick Start: Adapters](./docs/QUICK_START_ADAPTERS.md)** - Get started with Site Adapters in 5 minutes

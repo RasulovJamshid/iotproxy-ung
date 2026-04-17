@@ -8,6 +8,48 @@ export type SensorStatus =
   | 'MAINTENANCE'
   | 'CALIBRATING';
 
+export type SensorType =
+  | 'TEMPERATURE'
+  | 'HUMIDITY'
+  | 'PRESSURE'
+  | 'FLOW'
+  | 'LEVEL'
+  | 'VOLTAGE'
+  | 'CURRENT'
+  | 'POWER'
+  | 'ENERGY'
+  | 'VIBRATION'
+  | 'ACCELERATION'
+  | 'VELOCITY'
+  | 'POSITION'
+  | 'PROXIMITY'
+  | 'MOTION'
+  | 'LIGHT'
+  | 'SOUND'
+  | 'GAS'
+  | 'PH'
+  | 'CONDUCTIVITY'
+  | 'TURBIDITY'
+  | 'DISSOLVED_OXYGEN'
+  | 'COUNTER'
+  | 'BINARY'
+  | 'OTHER';
+
+export type SensorCategory =
+  | 'ENVIRONMENTAL'
+  | 'INDUSTRIAL'
+  | 'ENERGY'
+  | 'WATER_QUALITY'
+  | 'HVAC'
+  | 'SAFETY'
+  | 'SECURITY'
+  | 'MANUFACTURING'
+  | 'AGRICULTURE'
+  | 'BUILDING_AUTOMATION'
+  | 'TRANSPORTATION'
+  | 'HEALTHCARE'
+  | 'OTHER';
+
 export type CommissioningStatus =
   | 'DISCOVERY'
   | 'REVIEW'

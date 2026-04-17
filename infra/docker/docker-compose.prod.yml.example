@@ -5,17 +5,19 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg15
     restart: unless-stopped
+    env_file:
+      - ../../.env
     environment:
-      POSTGRES_DB: iotproxy
-      POSTGRES_USER: iotproxy
-      POSTGRES_PASSWORD: iotproxy
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - '5432:5432'
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ../timescaledb/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U iotproxy']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -64,9 +66,11 @@ services:
     image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ':9090'
+    env_file:
+      - ../../.env
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - '9000:9000'
       - '9090:9090'
@@ -78,18 +82,10 @@ services:
       timeout: 10s
       retries: 3
 
-  mailhog:
-    image: mailhog/mailhog:latest
-    restart: unless-stopped
-    ports:
-      - '1025:1025'
-      - '8025:8025'
-
   backend:
     build:
-      # Context is the monorepo root so Dockerfile can COPY shared/ and backend/
       context: ../../
-      dockerfile: backend/Dockerfile.dev
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     ports:
       - '3000:3000'
@@ -97,17 +93,12 @@ services:
       - ../../.env
     environment:
       # Override .env values with Docker-specific service names
-      DATABASE_URL: postgresql://iotproxy:iotproxy@timescaledb:5432/iotproxy
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
       REDIS_BULL_URL: redis://redis-bull:6379/0
       REDIS_CACHE_URL: redis://redis-cache:6379/0
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       MINIO_ENDPOINT: minio:9000
-      SMTP_HOST: mailhog
-      POD_NAME: backend-1
-    volumes:
-      # Hot-reload: mount source only, not node_modules
-      - ../../backend/src:/app/backend/src:ro
-      - ../../shared/src:/app/shared/src:ro
+      NODE_ENV: production
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -119,19 +110,16 @@ services:
   frontend:
     build:
       context: ../../
-      dockerfile: frontend/Dockerfile.dev
+      dockerfile: frontend/Dockerfile
     restart: unless-stopped
     ports:
-      - '5173:5173'
+      - '80:80'
     env_file:
       - ../../.env
     environment:
       # Override .env values with Docker-specific service names
       VITE_API_TARGET: http://backend:3000
       VITE_WS_TARGET: ws://backend:3000
-    volumes:
-      - ../../frontend/src:/app/frontend/src:ro
-      - ../../frontend/vite.config.ts:/app/frontend/vite.config.ts:ro
     depends_on:
       - backend
 

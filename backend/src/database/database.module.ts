@@ -13,7 +13,8 @@ import { TimescaleRepository } from './timescale.repository';
         entities: [__dirname + '/../**/*.entity{.ts,.js}'],
         // synchronize: true in dev — auto-creates management tables from entity definitions.
         // For production, set to false and run migrations.
-        synchronize: config.get('env') !== 'production',
+        // TEMPORARILY DISABLED: Fix user organization_id NULL values first
+        synchronize: false,
         logging: config.get('env') === 'development' ? ['error', 'warn'] : ['error'],
         extra: {
           max: 10,

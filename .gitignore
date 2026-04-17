@@ -15,12 +15,15 @@ build/
 # Environment files
 backend/.env
 frontend/.env
-*.env
+.env
 *.env.local
 *.env.development.local
 *.env.test.local
 *.env.production.local
 .env.*.local
+# Allow .env.example files
+!.env.example
+!**/.env.example
 
 # Logs
 *.log
@@ -100,6 +103,9 @@ $RECYCLE.BIN/
 .dockerignore
 docker-compose.override.yml
 docker-compose.prod.yml
+# Allow docker-compose example files
+!docker-compose.*.example
+!**/docker-compose.*.example
 # Misc
 .eslintcache
 .stylelintcache

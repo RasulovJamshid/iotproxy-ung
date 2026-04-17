@@ -4,6 +4,8 @@ import {
 } from 'typeorm';
 import { Site } from '../sites/site.entity';
 import { SensorConfig } from './sensor-config.entity';
+import { SensorType } from './sensor-type.entity';
+import { SensorCategory } from './sensor-category.entity';
 
 @Entity('sensors')
 @Unique('UQ_sensors_site_external_id', ['siteId', 'externalId'])
@@ -29,6 +31,20 @@ export class Sensor {
 
   @Column({ nullable: true })
   description?: string;
+
+  @Column({ name: 'type_id', nullable: true })
+  typeId?: string;
+
+  @ManyToOne(() => SensorType, { nullable: true })
+  @JoinColumn({ name: 'type_id' })
+  type?: SensorType;
+
+  @Column({ name: 'category_id', nullable: true })
+  categoryId?: string;
+
+  @ManyToOne(() => SensorCategory, { nullable: true })
+  @JoinColumn({ name: 'category_id' })
+  category?: SensorCategory;
 
   @Column({ default: 'MAINTENANCE' })
   status!: string;   // ACTIVE | DISABLED | MAINTENANCE | CALIBRATING

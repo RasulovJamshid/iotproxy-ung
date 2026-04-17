@@ -9,6 +9,8 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { Pagination } from '../components/ui/Pagination';
 import { usePagination } from '../hooks/usePagination';
 import { formatDistanceToNow } from 'date-fns';
+import { useSensorTypes } from '../hooks/useSensorTypes';
+import { useSensorCategories } from '../hooks/useSensorCategories';
 
 const SENSOR_STATUSES = ['ACTIVE', 'DISABLED', 'MAINTENANCE', 'CALIBRATING'];
 
@@ -49,6 +51,8 @@ export default function SensorsPage() {
   const sensors = sensorsResponse?.data ?? [];
   const { data: sitesResponse } = useSites();
   const sites = sitesResponse?.data ?? [];
+  const { data: sensorTypes } = useSensorTypes();
+  const { data: sensorCategories } = useSensorCategories();
   const updateStatus = useUpdateSensorStatus();
   const softDelete = useSoftDeleteSensor();
   const hardDelete = useHardDeleteSensor();
@@ -56,6 +60,8 @@ export default function SensorsPage() {
   const [search, setSearch] = useState('');
   const [siteFilter, setSiteFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeIdFilter, setTypeIdFilter] = useState('');
+  const [categoryIdFilter, setCategoryIdFilter] = useState('');
   
   const [changingId, setChangingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -67,14 +73,16 @@ export default function SensorsPage() {
       if (q && !s.name.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q) && !s.id.toLowerCase().includes(q)) return false;
       if (siteFilter && s.siteId !== siteFilter) return false;
       if (statusFilter && s.status !== statusFilter) return false;
+      if (typeIdFilter && s.typeId !== typeIdFilter) return false;
+      if (categoryIdFilter && s.categoryId !== categoryIdFilter) return false;
       return true;
     });
-  }, [sensors, search, siteFilter, statusFilter]);
+  }, [sensors, search, siteFilter, statusFilter, typeIdFilter, categoryIdFilter]);
 
   const pg = usePagination(filtered);
-  const hasFilters = search !== '' || siteFilter !== '' || statusFilter !== '';
+  const hasFilters = search !== '' || siteFilter !== '' || statusFilter !== '' || typeIdFilter !== '' || categoryIdFilter !== '';
 
-  useEffect(() => { pg.goTo(1); }, [search, siteFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { pg.goTo(1); }, [search, siteFilter, statusFilter, typeIdFilter, categoryIdFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeCount = sensors.filter(s => s.status === 'ACTIVE').length;
   const onlineCount = sensors.filter(s => s.connectivityStatus === 'ONLINE').length;
@@ -151,9 +159,31 @@ export default function SensorsPage() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+          {/* Type Filter */}
+          <select
+            className="input w-40 text-sm py-1.5"
+            value={typeIdFilter}
+            onChange={(e) => setTypeIdFilter(e.target.value)}
+          >
+            <option value="">Type: All</option>
+            {sensorTypes?.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          {/* Category Filter */}
+          <select
+            className="input w-44 text-sm py-1.5"
+            value={categoryIdFilter}
+            onChange={(e) => setCategoryIdFilter(e.target.value)}
+          >
+            <option value="">Category: All</option>
+            {sensorCategories?.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
           {hasFilters && (
             <button
-              onClick={() => { setSearch(''); setSiteFilter(''); setStatusFilter(''); }}
+              onClick={() => { setSearch(''); setSiteFilter(''); setStatusFilter(''); setTypeIdFilter(''); setCategoryIdFilter(''); }}
               className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
             >
               Clear
@@ -180,6 +210,8 @@ export default function SensorsPage() {
               <tr>
                 <th className="table-th">Sensor</th>
                 <th className="table-th">Site</th>
+                <th className="table-th">Type</th>
+                <th className="table-th">Category</th>
                 <th className="table-th">Status</th>
                 <th className="table-th">Connectivity</th>
                 <th className="table-th">Last Reading</th>
@@ -211,6 +243,16 @@ export default function SensorsPage() {
                       <Link to={`/sites/${sensor.siteId}`} className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline">
                         {siteName}
                       </Link>
+                    </td>
+                    <td className="table-td">
+                      <span className="text-xs text-slate-600 dark:text-slate-300">
+                        {sensor.type?.name ?? '—'}
+                      </span>
+                    </td>
+                    <td className="table-td">
+                      <span className="text-xs text-slate-600 dark:text-slate-300">
+                        {sensor.category?.name ?? '—'}
+                      </span>
                     </td>
                     <td className="table-td">
                       {changingId === sensor.id ? (

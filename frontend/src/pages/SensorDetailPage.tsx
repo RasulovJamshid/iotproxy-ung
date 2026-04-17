@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useSensor, useUpdateSensorStatus, useUpdateSensor, useSensorConfig, useSoftDeleteSensor, useHardDeleteSensor, useTransferSensor } from '../hooks/useSensors';
+import { useSensor, useUpdateSensorStatus, useUpdateSensor, useSensorConfig, useSoftDeleteSensor, useHardDeleteSensor, useTransferSensor, useCopySensor } from '../hooks/useSensors';
 import { useSite, useSites } from '../hooks/useSites';
 import { useReadings, useRawReadings, useDeleteReading, useClearAllReadings } from '../hooks/useReadings';
 import { useAlertEvents } from '../hooks/useAlerts';
@@ -13,6 +13,8 @@ import { PageSpinner } from '../components/ui/Spinner';
 import { SensorConfigForm } from '../components/SensorConfigForm';
 import { api } from '../api/client';
 import { formatDistanceToNow, subHours } from 'date-fns';
+import { useSensorTypes } from '../hooks/useSensorTypes';
+import { useSensorCategories } from '../hooks/useSensorCategories';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip,
@@ -49,6 +51,7 @@ export default function SensorDetailPage() {
   const deleteReading = useDeleteReading();
   const clearAllReadings = useClearAllReadings();
   const transferSensor = useTransferSensor();
+  const copySensor = useCopySensor();
   const { data: allSitesResponse } = useSites();
   const allSites = allSitesResponse?.data ?? [];
   const [editingExternalId, setEditingExternalId] = useState(false);
@@ -56,8 +59,12 @@ export default function SensorDetailPage() {
   const [editingInfo, setEditingInfo] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [descDraft, setDescDraft] = useState('');
+  const [typeIdDraft, setTypeIdDraft] = useState('');
+  const [categoryIdDraft, setCategoryIdDraft] = useState('');
   const [intervalDraft, setIntervalDraft] = useState('');
   const [maxRecordsDraft, setMaxRecordsDraft] = useState('');
+  const { data: sensorTypes } = useSensorTypes();
+  const { data: sensorCategories } = useSensorCategories();
   const { data: sensorConfig } = useSensorConfig(id);
   const { actualTheme } = useTheme();
   const [rangeHours, setRangeHours] = useState(24);
@@ -70,6 +77,9 @@ export default function SensorDetailPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferSiteId, setTransferSiteId] = useState('');
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copySiteId, setCopySiteId] = useState('');
+  const [copyName, setCopyName] = useState('');
 
   const { startTs, endTs, intervalMs } = useMemo(() => {
     const now = new Date();
@@ -131,6 +141,8 @@ export default function SensorDetailPage() {
                     id: id!,
                     name: nameDraft,
                     description: descDraft || undefined,
+                    typeId: typeIdDraft || undefined,
+                    categoryId: categoryIdDraft || undefined,
                     reportingIntervalSeconds: intervalDraft ? Number(intervalDraft) : undefined,
                     maxRecordsPerSensor: maxRecordsDraft ? Number(maxRecordsDraft) : null,
                   });
@@ -151,6 +163,28 @@ export default function SensorDetailPage() {
                   onChange={(e) => setDescDraft(e.target.value)}
                   placeholder="Description (optional)"
                 />
+                <div className="flex items-center gap-2">
+                  <select
+                    className="input text-sm py-1 w-48"
+                    value={typeIdDraft}
+                    onChange={(e) => setTypeIdDraft(e.target.value)}
+                  >
+                    <option value="">Type (optional)</option>
+                    {sensorTypes?.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="input text-sm py-1 w-48"
+                    value={categoryIdDraft}
+                    onChange={(e) => setCategoryIdDraft(e.target.value)}
+                  >
+                    <option value="">Category (optional)</option>
+                    {sensorCategories?.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="flex items-center gap-2">
                   <input
                     className="input text-sm py-1 w-32"
@@ -189,7 +223,7 @@ export default function SensorDetailPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => { setNameDraft(sensor.name); setDescDraft(sensor.description ?? ''); setIntervalDraft(String(sensor.reportingIntervalSeconds ?? '')); setMaxRecordsDraft(sensor.maxRecordsPerSensor != null ? String(sensor.maxRecordsPerSensor) : ''); setEditingInfo(true); }}
+                  onClick={() => { setNameDraft(sensor.name); setDescDraft(sensor.description ?? ''); setTypeIdDraft(sensor.typeId ?? ''); setCategoryIdDraft(sensor.categoryId ?? ''); setIntervalDraft(String(sensor.reportingIntervalSeconds ?? '')); setMaxRecordsDraft(sensor.maxRecordsPerSensor != null ? String(sensor.maxRecordsPerSensor) : ''); setEditingInfo(true); }}
                   className="mt-1 text-xs text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   edit
@@ -216,6 +250,12 @@ export default function SensorDetailPage() {
                     className="text-xs text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200 dark:border-slate-700 rounded px-2.5 py-1 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors"
                   >
                     Move to site…
+                  </button>
+                  <button
+                    onClick={() => { setCopySiteId(''); setCopyName(sensor.name); setCopyOpen(true); }}
+                    className="text-xs text-slate-400 dark:text-slate-500 hover:text-green-600 dark:hover:text-green-400 border border-slate-200 dark:border-slate-700 rounded px-2.5 py-1 hover:border-green-300 dark:hover:border-green-700 transition-colors"
+                  >
+                    Copy to site…
                   </button>
                   <span className="text-xs text-slate-300 dark:text-slate-600">|</span>
                 </>
@@ -263,6 +303,8 @@ export default function SensorDetailPage() {
         <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
             { label: 'Site', value: site ? <Link to={`/sites/${site.id}`} className="text-blue-600 dark:text-blue-400 hover:underline">{site.name}</Link> : '…' },
+            { label: 'Type', value: sensor.type?.name ?? '—' },
+            { label: 'Category', value: sensor.category?.name ?? '—' },
             { label: 'Last Reading', value: sensor.lastReadingAt ? formatDistanceToNow(new Date(sensor.lastReadingAt), { addSuffix: true }) : '—' },
             { label: 'Reporting Interval', value: sensor.reportingIntervalSeconds ? `${sensor.reportingIntervalSeconds}s` : '—' },
             { label: 'Record Limit', value: sensor.maxRecordsPerSensor != null ? `${sensor.maxRecordsPerSensor} records` : 'No limit' },
@@ -592,6 +634,53 @@ export default function SensorDetailPage() {
         confirmLabel="Move Sensor"
         loading={transferSensor.isPending}
       />
+
+      {/* Copy sensor modal */}
+      <Modal open={copyOpen} onClose={() => setCopyOpen(false)} title="Copy Sensor to Another Site" width="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Create a duplicate of this sensor on another site. The new sensor will copy all configuration settings but start with no readings.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Target Site</label>
+            <select
+              className="input w-full"
+              value={copySiteId}
+              onChange={(e) => setCopySiteId(e.target.value)}
+            >
+              <option value="">Select site…</option>
+              {allSites?.filter((s) => s.id !== sensor?.siteId).map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">New Sensor Name</label>
+            <input
+              type="text"
+              className="input w-full"
+              value={copyName}
+              onChange={(e) => setCopyName(e.target.value)}
+              placeholder="Enter name for the copied sensor"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={() => setCopyOpen(false)} className="btn-secondary">Cancel</button>
+            <button
+              type="button"
+              disabled={!copySiteId || !copyName}
+              onClick={async () => {
+                await copySensor.mutateAsync({ id: id!, targetSiteId: copySiteId, newName: copyName });
+                setCopyOpen(false);
+                navigate(`/sites/${copySiteId}`);
+              }}
+              className="btn-primary bg-green-600 hover:bg-green-700"
+            >
+              {copySensor.isPending ? 'Copying…' : 'Copy Sensor'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Virtual sensor creation modal */}
       <Modal open={virtualOpen} onClose={() => setVirtualOpen(false)} title="Create Virtual Sensor">

@@ -10,6 +10,8 @@ import SitesPage from './pages/SitesPage';
 import SiteDetailPage from './pages/SiteDetailPage';
 import SensorsPage from './pages/SensorsPage';
 import SensorDetailPage from './pages/SensorDetailPage';
+import SensorTypesPage from './pages/SensorTypesPage';
+import SensorCategoriesPage from './pages/SensorCategoriesPage';
 import AlertsPage from './pages/AlertsPage';
 import ExportPage from './pages/ExportPage';
 import { AdaptersPage } from './pages/AdaptersPage';
@@ -88,6 +90,13 @@ const navGroups: NavGroup[] = [
       { to: '/sites',   label: 'Sites',     Icon: Icons.Sites },
       { to: '/sensors', label: 'Sensors',   Icon: Icons.Sensors },
       { to: '/alerts',  label: 'Alerts',    Icon: Icons.Alerts },
+    ],
+  },
+  {
+    heading: 'Configuration',
+    items: [
+      { to: '/sensor-types',      label: 'Sensor Types',      Icon: Icons.Settings, roles: ['ADMIN', 'SYSTEM_ADMIN'] },
+      { to: '/sensor-categories', label: 'Sensor Categories', Icon: Icons.Settings, roles: ['ADMIN', 'SYSTEM_ADMIN'] },
     ],
   },
   {
@@ -262,6 +271,8 @@ const pageTitles: Record<string, string> = {
   '/':         'Dashboard',
   '/sites':    'Sites',
   '/sensors':  'Sensors',
+  '/sensor-types': 'Sensor Types',
+  '/sensor-categories': 'Sensor Categories',
   '/alerts':   'Alerts',
   '/export':   'Export',
   '/api-keys': 'API Keys',
@@ -406,6 +417,8 @@ export default function App() {
                             <Route path="/sites/:id"     element={<SiteDetailPage />} />
                             <Route path="/sensors"       element={<SensorsPage />} />
                             <Route path="/sensors/:id"   element={<SensorDetailPage />} />
+                            <Route path="/sensor-types"  element={<SensorTypesPage />} />
+                            <Route path="/sensor-categories" element={<SensorCategoriesPage />} />
                             <Route path="/alerts"        element={<AlertsPage />} />
                             <Route path="/export"        element={<ExportPage />} />
                             <Route path="/adapters"      element={<AdaptersPage />} />

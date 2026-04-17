@@ -28,6 +28,8 @@ export function useCreateSensor() {
       siteId: string;
       name: string;
       description?: string;
+      typeId?: string;
+      categoryId?: string;
       reportingIntervalSeconds?: number;
     }) => api.post('/sensors', body).then((r) => r.data),
     onSuccess: (_d, vars) => {
@@ -40,7 +42,7 @@ export function useCreateSensor() {
 export function useUpdateSensor() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; externalId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null }) =>
+    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; externalId?: string; typeId?: string; categoryId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null }) =>
       api.patch(`/sensors/${id}`, data).then((r) => r.data),
     onSuccess: (updated, { id }) => {
       qc.setQueryData(['sensors', 'detail', id], updated);
@@ -54,8 +56,20 @@ export function useTransferSensor() {
   return useMutation({
     mutationFn: ({ id, newSiteId }: { id: string; newSiteId: string }) =>
       api.patch(`/sensors/${id}/transfer`, { newSiteId }).then((r) => r.data),
-    onSuccess: (updated: Sensor, { id }) => {
-      qc.setQueryData(['sensors', 'detail', id], updated);
+    onSuccess: (updated) => {
+      qc.setQueryData(['sensors', 'detail', updated.id], updated);
+      qc.invalidateQueries({ queryKey: ['sensors'] });
+    },
+  });
+}
+
+export function useCopySensor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, targetSiteId, newName }: { id: string; targetSiteId: string; newName?: string }) =>
+      api.post(`/sensors/${id}/copy`, { targetSiteId, newName }).then((r) => r.data),
+    onSuccess: (newSensor) => {
+      qc.setQueryData(['sensors', 'detail', newSensor.id], newSensor);
       qc.invalidateQueries({ queryKey: ['sensors'] });
     },
   });

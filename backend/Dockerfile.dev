@@ -26,7 +26,13 @@ WORKDIR /app/backend
 
 # Copy backend source (mounted as volume in dev, copied in prod)
 COPY backend/src ./src/
+COPY backend/migrations ./migrations/
+COPY backend/scripts ./scripts/
+
+# Make entrypoint executable
+RUN chmod +x ./scripts/docker-entrypoint.sh
 
 EXPOSE 3000
 
+ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
 CMD ["npm", "run", "dev"]

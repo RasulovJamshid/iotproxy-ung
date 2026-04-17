@@ -513,6 +513,7 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -868,13 +869,15 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
         </button>
       </div>
 
-      {showTemplateModal && (
-        <SaveAsTemplateModal 
-          siteId={siteId} 
-          onClose={() => setShowTemplateModal(false)}
-          onSuccess={onTemplateSaved}
-        />
-      )}
     </form>
+
+    {showTemplateModal && (
+      <SaveAsTemplateModal 
+        siteId={siteId} 
+        onClose={() => setShowTemplateModal(false)}
+        onSuccess={onTemplateSaved}
+      />
+    )}
+    </>
   );
 }

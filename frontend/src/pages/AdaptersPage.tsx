@@ -208,13 +208,13 @@ export function AdaptersPage() {
           ) : activeTab === 'inbound' ? (
             <InboundConfigForm 
               siteId={selectedSiteId} 
-              adapter={adapter}
+              adapter={adapter ?? undefined}
               onTemplateSaved={() => setActiveTab('templates')}
             />
           ) : (
             <PullConfigForm 
               siteId={selectedSiteId} 
-              adapter={adapter}
+              adapter={adapter ?? undefined}
               onTemplateSaved={() => setActiveTab('templates')}
             />
           )}

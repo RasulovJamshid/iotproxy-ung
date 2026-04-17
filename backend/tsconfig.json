@@ -5,12 +5,11 @@
     "module": "CommonJS",
     "lib": ["ES2020"],
     "outDir": "dist",
-    "rootDir": "src",
     "baseUrl": ".",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "strictNullChecks": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "migrations/**/*"],
   "exclude": ["dist", "node_modules", "test"]
 }

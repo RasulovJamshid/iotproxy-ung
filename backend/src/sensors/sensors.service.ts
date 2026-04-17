@@ -28,6 +28,7 @@ export class SensorsService {
       skip: (page - 1) * limit,
       take: limit,
       order: { createdAt: 'DESC' },
+      relations: ['type', 'category'],
     });
     return {
       data,
@@ -39,7 +40,10 @@ export class SensorsService {
   }
 
   async findOne(id: string, organizationId: string) {
-    const s = await this.sensors.findOne({ where: { id, organizationId } });
+    const s = await this.sensors.findOne({ 
+      where: { id, organizationId },
+      relations: ['type', 'category'],
+    });
     if (!s) throw new NotFoundException(`Sensor ${id} not found`);
     return s;
   }
@@ -54,7 +58,7 @@ export class SensorsService {
     return this.findOne(id, organizationId);
   }
 
-  async update(id: string, organizationId: string, data: Pick<Sensor, 'name' | 'description' | 'externalId' | 'reportingIntervalSeconds' | 'maxRecordsPerSensor'>) {
+  async update(id: string, organizationId: string, data: Partial<Pick<Sensor, 'name' | 'description' | 'externalId' | 'typeId' | 'categoryId' | 'reportingIntervalSeconds' | 'maxRecordsPerSensor'>>) {
     await this.findOne(id, organizationId);
     await this.sensors.update(id, data);
     return this.findOne(id, organizationId);
@@ -94,6 +98,76 @@ export class SensorsService {
 
     await this.sensors.update(id, { siteId: newSiteId });
     return this.findOne(id, organizationId);
+  }
+
+  async copySensor(id: string, organizationId: string, targetSiteId: string, newName?: string) {
+    const sourceSensor = await this.findOne(id, organizationId);
+
+    // Verify target site exists and belongs to the same organization
+    const targetSite = await this.sites.findOne({ where: { id: targetSiteId, organizationId } });
+    if (!targetSite) throw new NotFoundException(`Site ${targetSiteId} not found in this organization`);
+
+    return this.dataSource.transaction(async (em) => {
+      // Create new sensor with copied properties
+      const copiedSensor = em.create(Sensor, {
+        organizationId,
+        siteId: targetSiteId,
+        name: newName || `${sourceSensor.name} (Copy)`,
+        description: sourceSensor.description,
+        externalId: sourceSensor.externalId,
+        typeId: sourceSensor.typeId,
+        categoryId: sourceSensor.categoryId,
+        reportingIntervalSeconds: sourceSensor.reportingIntervalSeconds,
+        maxRecordsPerSensor: sourceSensor.maxRecordsPerSensor,
+        status: 'DISABLED', // Start as disabled for safety
+        connectivityStatus: 'OFFLINE',
+      });
+
+      const newSensor = await em.save(copiedSensor);
+
+      // Copy active sensor config if it exists
+      const activeConfig = await this.configs.findOne({
+        where: { sensorId: id, isActive: true },
+      });
+
+      if (activeConfig) {
+        const copiedConfig = em.create(SensorConfig, {
+          sensorId: newSensor.id,
+          isActive: true,
+          alias: activeConfig.alias,
+          unit: activeConfig.unit,
+          scaleMultiplier: activeConfig.scaleMultiplier,
+          scaleOffset: activeConfig.scaleOffset,
+          expectedMin: activeConfig.expectedMin,
+          expectedMax: activeConfig.expectedMax,
+          rejectOutOfRange: activeConfig.rejectOutOfRange,
+          fieldMappings: activeConfig.fieldMappings,
+        });
+
+        const savedConfig = await em.save(copiedConfig);
+
+        // Create initial version record for the copied config
+        await em.save(
+          em.create(SensorConfigVersion, {
+            configId: savedConfig.id,
+            version: 1,
+            snapshot: {
+              alias: activeConfig.alias,
+              unit: activeConfig.unit,
+              scaleMultiplier: activeConfig.scaleMultiplier,
+              scaleOffset: activeConfig.scaleOffset,
+              expectedMin: activeConfig.expectedMin ?? null,
+              expectedMax: activeConfig.expectedMax ?? null,
+              rejectOutOfRange: activeConfig.rejectOutOfRange,
+              fieldMappings: activeConfig.fieldMappings,
+            },
+            changedBy: 'system:copy',
+          }),
+        );
+      }
+
+      return newSensor;
+    });
   }
 
   // ── SensorConfig (immutable versioning) ───────────────────────────────────

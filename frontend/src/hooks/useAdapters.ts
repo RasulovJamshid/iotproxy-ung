@@ -13,11 +13,16 @@ export function useAdapters() {
 }
 
 export function useAdapter(siteId: string | undefined) {
-  return useQuery<SiteAdapter>({
+  return useQuery<SiteAdapter | null>({
     queryKey: ['adapters', siteId],
     queryFn: async () => {
-      const res = await api.get(`/adapters/${siteId}`);
-      return res.data;
+      try {
+        const res = await api.get(`/adapters/${siteId}`);
+        return res.data;
+      } catch (err: any) {
+        if (err?.response?.status === 404) return null;
+        throw err;
+      }
     },
     enabled: !!siteId,
   });
@@ -32,7 +37,8 @@ export function useUpdateAdapter() {
     },
     onSuccess: (updated, { siteId }) => {
       queryClient.setQueryData(['adapters', siteId], updated);
-      queryClient.invalidateQueries({ queryKey: ['adapters'] });
+      queryClient.invalidateQueries({ queryKey: ['adapters', siteId] });
+      queryClient.invalidateQueries({ queryKey: ['adapters'], exact: true });
     },
   });
 }

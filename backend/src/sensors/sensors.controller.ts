@@ -61,7 +61,7 @@ export class SensorsController {
 
   @Post()
   create(
-    @Body() body: { siteId: string; name: string; description?: string; reportingIntervalSeconds?: number },
+    @Body() body: { siteId: string; name: string; description?: string; typeId?: string; categoryId?: string; reportingIntervalSeconds?: number },
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {
@@ -84,7 +84,7 @@ export class SensorsController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { name?: string; description?: string; externalId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null },
+    @Body() body: { name?: string; description?: string; externalId?: string; typeId?: string; categoryId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null },
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {
@@ -102,6 +102,29 @@ export class SensorsController {
     }
     
     return this.service.update(id, organizationId, body as any);
+  }
+
+  @Post(':id/copy')
+  copySensor(
+    @Param('id') id: string,
+    @Body() body: { targetSiteId: string; newName?: string },
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+
+    // API key must have 'admin' permission
+    if (org && !org.permissions.includes(PERMISSIONS.ADMIN)) {
+      throw new UnauthorizedException('API key lacks admin permission');
+    }
+
+    // JWT users must have ADMIN role
+    if (user && user.role !== 'ADMIN' && user.role !== 'SYSTEM_ADMIN') {
+      throw new UnauthorizedException('Insufficient permissions');
+    }
+
+    return this.service.copySensor(id, organizationId, body.targetSiteId, body.newName);
   }
 
   @Patch(':id/transfer')
