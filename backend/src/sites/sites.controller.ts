@@ -75,7 +75,18 @@ export class SitesController {
 
   @Post()
   create(
-    @Body() body: { name: string; description?: string },
+    @Body() body: {
+      name: string;
+      description?: string;
+      groupId?: string;
+      siteType?: string;
+      latitude?: number;
+      longitude?: number;
+      timezone?: string;
+      tags?: string[];
+      metadata?: Record<string, unknown>;
+      customFields?: Record<string, unknown>;
+    },
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {

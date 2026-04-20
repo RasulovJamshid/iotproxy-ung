@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useSensor, useUpdateSensorStatus, useUpdateSensor, useSensorConfig, useSoftDeleteSensor, useHardDeleteSensor, useTransferSensor, useCopySensor } from '../hooks/useSensors';
+import { useSensor, useUpdateSensorStatus, useUpdateSensor, useSensorConfig, useSoftDeleteSensor, useHardDeleteSensor, useTransferSensor, useCopySensor, useCopyConflictSites } from '../hooks/useSensors';
 import { useSite, useSites } from '../hooks/useSites';
 import { useReadings, useRawReadings, useDeleteReading, useClearAllReadings } from '../hooks/useReadings';
 import { useAlertEvents } from '../hooks/useAlerts';
@@ -101,6 +101,7 @@ export default function SensorDetailPage() {
   const { data: site } = useSite(sensor?.siteId ?? '');
   const { data: events } = useAlertEvents(id);
   const { data: rawReadings, isLoading: rawLoading } = useRawReadings(id!, rawRangeHours, 100);
+  const { data: conflictSiteIds = [] } = useCopyConflictSites(copyOpen ? sensor?.externalId : undefined);
 
   const isDark = actualTheme === 'dark';
   const chartTickColor  = isDark ? '#64748b' : '#94a3b8';
@@ -681,10 +682,17 @@ export default function SensorDetailPage() {
               onChange={(e) => setCopySiteId(e.target.value)}
             >
               <option value="">Select site…</option>
-              {allSites?.filter((s) => s.id !== sensor?.siteId).map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
+              {allSites
+                ?.filter((s) => s.id !== sensor?.siteId && !conflictSiteIds.includes(s.id))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
             </select>
+            {conflictSiteIds.length > 0 && (
+              <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                {conflictSiteIds.length} site{conflictSiteIds.length > 1 ? 's' : ''} hidden — a sensor with external ID <code className="font-mono">{sensor?.externalId}</code> already exists there.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">New Sensor Name</label>

@@ -63,6 +63,16 @@ export function useTransferSensor() {
   });
 }
 
+export function useCopyConflictSites(externalId?: string) {
+  return useQuery<string[]>({
+    queryKey: ['sensors', 'conflict-sites', externalId],
+    queryFn: async () =>
+      (await api.get('/sensors/conflict-sites', { params: { externalId } })).data,
+    enabled: !!externalId,
+    staleTime: 30_000,
+  });
+}
+
 export function useCopySensor() {
   const qc = useQueryClient();
   return useMutation({

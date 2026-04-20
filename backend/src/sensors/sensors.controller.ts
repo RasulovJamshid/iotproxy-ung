@@ -42,6 +42,20 @@ export class SensorsController {
     return this.service.findAll(effectiveSiteId, organizationId, pageNum, limitNum);
   }
 
+  @Get('conflict-sites')
+  conflictSites(
+    @Query('externalId') externalId: string,
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
+      throw new UnauthorizedException('API key lacks read permission');
+    }
+    return this.service.findConflictSites(externalId, organizationId);
+  }
+
   @Get(':id')
   findOne(
     @Param('id') id: string,

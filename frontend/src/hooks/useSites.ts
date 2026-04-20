@@ -29,8 +29,18 @@ export function useSite(id: string) {
 export function useCreateSite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; description?: string; groupId?: string }) =>
-      api.post('/sites', body).then((r) => r.data),
+    mutationFn: (body: {
+      name: string;
+      description?: string;
+      groupId?: string;
+      siteType?: string;
+      latitude?: number;
+      longitude?: number;
+      timezone?: string;
+      tags?: string[];
+      metadata?: Record<string, unknown>;
+      customFields?: Record<string, unknown>;
+    }) => api.post('/sites', body).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sites'] });
       qc.invalidateQueries({ queryKey: ['site-groups'] });

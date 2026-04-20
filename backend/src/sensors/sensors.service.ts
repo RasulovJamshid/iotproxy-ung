@@ -21,6 +21,14 @@ export class SensorsService {
 
   // ── Sensors ───────────────────────────────────────────────────────────────
 
+  async findConflictSites(externalId: string, organizationId: string): Promise<string[]> {
+    const matches = await this.sensors.find({
+      where: { externalId, organizationId },
+      select: ['siteId'],
+    });
+    return [...new Set(matches.map((s) => s.siteId))];
+  }
+
   async findAll(siteId: string, organizationId: string, page = 1, limit = 50) {
     const where = siteId ? { siteId, organizationId } : { organizationId };
     const [data, total] = await this.sensors.findAndCount({
