@@ -58,6 +58,20 @@ export type CommissioningStatus =
 
 export type ConnectivityStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
 
+// ── Site Groups ──────────────────────────────────────────────────────────────
+
+export interface SiteGroup {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  /** Hex color string, e.g. "#3b82f6" */
+  color?: string;
+  siteCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 
 export type AlertOperator = 'GT' | 'LT' | 'GTE' | 'LTE' | 'EQ' | 'NEQ';
@@ -157,6 +171,29 @@ export interface PullAuthConfig {
   password?:   string;
 }
 
+// ── Time parameters for dynamic time range calculation ───────────────────────
+
+export type TimeParamMode = 'relative' | 'absolute' | 'expression';
+export type TimeFormat = 'iso8601' | 'unix_ms' | 'unix_s' | 'custom';
+
+export interface TimeParamConfig {
+  mode: TimeParamMode;
+  relativeOffset?: number;
+  absoluteValue?: string;
+  expression?: string;
+}
+
+export interface PullTimeParams {
+  enabled: boolean;
+  startTime?: TimeParamConfig;
+  endTime?: TimeParamConfig;
+  format: TimeFormat;
+  customFormat?: string;
+  startParamName?: string;
+  endParamName?: string;
+  location: 'query' | 'body';
+}
+
 export interface SiteAdapter {
   id: string;
   siteId: string;
@@ -172,6 +209,7 @@ export interface SiteAdapter {
   pullAuthConfig?: PullAuthConfig;
   pullBodyTemplate?: Record<string, unknown>;
   pullIntervalSec: number;
+  pullTimeParams?: PullTimeParams;
   responseMapping?: ResponseMapping;
   pullLastAt?: string;
   pullLastStatusCode?: number;

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { subscribeToSite } from '../api/ws-client';
+import { subscribeToSite, reconnect } from '../api/ws-client';
 import { formatDistanceToNow } from 'date-fns';
 import type { WsReadingEvent, WsAlertEvent } from '@iotproxy/shared';
 
@@ -64,6 +64,14 @@ export function LiveReadingsFeed({ siteId, filterSensorId }: Props) {
       <div className="flex flex-wrap items-center gap-2">
         <span className={`h-2.5 w-2.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
         <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{connected ? 'Live stream connected' : 'Disconnected'}</span>
+        {!connected && (
+          <button
+            onClick={reconnect}
+            className="ml-1 rounded px-2 py-0.5 text-[11px] font-medium text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 transition-colors"
+          >
+            Reconnect
+          </button>
+        )}
         <span className="rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 px-2 py-0.5 text-[11px] text-slate-500 dark:text-slate-400">
           {entries.length} event{entries.length !== 1 ? 's' : ''}
         </span>

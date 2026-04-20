@@ -7,6 +7,7 @@ import { AppErrorBoundary } from './components/ui/AppErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import SitesPage from './pages/SitesPage';
+import SiteGroupsPage from './pages/SiteGroupsPage';
 import SiteDetailPage from './pages/SiteDetailPage';
 import SensorsPage from './pages/SensorsPage';
 import SensorDetailPage from './pages/SensorDetailPage';
@@ -55,6 +56,7 @@ const Icon = ({ d, ...p }: { d: string; [k: string]: unknown }) => (
 const Icons = {
   Dashboard: () => <Icon d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />,
   Sites:     () => <Icon d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />,
+  Groups:    () => <Icon d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />,
   Sensors:   () => <Icon d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />,
   Alerts:    () => <Icon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />,
   Export:    () => <Icon d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />,
@@ -87,7 +89,8 @@ const navGroups: NavGroup[] = [
   {
     heading: 'Monitoring',
     items: [
-      { to: '/sites',   label: 'Sites',     Icon: Icons.Sites },
+      { to: '/sites',        label: 'Sites',        Icon: Icons.Sites },
+      { to: '/site-groups',  label: 'Site Groups',  Icon: Icons.Groups },
       { to: '/sensors', label: 'Sensors',   Icon: Icons.Sensors },
       { to: '/alerts',  label: 'Alerts',    Icon: Icons.Alerts },
     ],
@@ -269,7 +272,8 @@ function ThemeToggle() {
 // ── Page titles ───────────────────────────────────────────────────────────────
 const pageTitles: Record<string, string> = {
   '/':         'Dashboard',
-  '/sites':    'Sites',
+  '/sites':        'Sites',
+  '/site-groups':  'Site Groups',
   '/sensors':  'Sensors',
   '/sensor-types': 'Sensor Types',
   '/sensor-categories': 'Sensor Categories',
@@ -414,6 +418,7 @@ export default function App() {
                           <Routes>
                             <Route path="/"              element={<DashboardPage />} />
                             <Route path="/sites"         element={<SitesPage />} />
+                            <Route path="/site-groups"   element={<SiteGroupsPage />} />
                             <Route path="/sites/:id"     element={<SiteDetailPage />} />
                             <Route path="/sensors"       element={<SensorsPage />} />
                             <Route path="/sensors/:id"   element={<SensorDetailPage />} />

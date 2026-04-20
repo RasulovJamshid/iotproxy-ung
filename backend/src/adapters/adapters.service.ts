@@ -88,8 +88,10 @@ export class AdaptersService {
 
   private async removePullJob(adapterId: string) {
     const repeatableJobs = await this.pullQueue.getRepeatableJobs();
+    const jobIdPrefix = `pull:${adapterId}`;
     for (const job of repeatableJobs) {
-      if (job.id === `pull:${adapterId}`) {
+      // Match by job ID or by checking if the job name matches our pattern
+      if (job.id === jobIdPrefix || (job.name === 'pull' && job.key.includes(adapterId))) {
         await this.pullQueue.removeRepeatableByKey(job.key);
       }
     }

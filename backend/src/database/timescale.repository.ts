@@ -6,6 +6,8 @@ import { ProcessedReading } from '@iotproxy/shared';
 const ALLOWED_VIEWS = new Set(['sensor_readings', 'readings_1h', 'readings_1d']);
 const ALLOWED_TIME_COLS = new Set(['phenomenon_time', 'bucket']);
 
+export const ALLOWED_AGG = new Set(['AVG', 'MIN', 'MAX', 'SUM', 'COUNT', 'NONE']);
+
 export interface TimeSeriesQueryParams {
   sensorId: string;
   startTs: Date;
@@ -13,7 +15,19 @@ export interface TimeSeriesQueryParams {
   agg: 'AVG' | 'MIN' | 'MAX' | 'SUM' | 'COUNT' | 'NONE';
   intervalMs?: number;
   limit?: number;
+  /** Keyset cursor: ISO timestamp — exclusive lower/upper bound depending on sortDir */
   cursor?: Date;
+  /** Sort direction for raw queries. Default: DESC (newest first). */
+  sortDir?: 'ASC' | 'DESC';
+  /** Minimum quality code to include (inclusive). Useful to filter out low-quality readings. */
+  minQuality?: number;
+  /**
+   * JSONB field inside `processed_data` to use as the numeric value when
+   * aggregating on the raw table (e.g. "temperature", "value").
+   * Required for agg != NONE when the hourly/daily continuous aggregates are
+   * not available (recent data or short ranges).
+   */
+  aggField?: string;
 }
 
 @Injectable()
@@ -114,38 +128,30 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     const rangeMs = params.endTs.getTime() - params.startTs.getTime();
     const now = Date.now();
     const oneHourAgo = now - 3_600_000;
-    const oneDayAgo = now - 86_400_000;
-    const sixHours = 6 * 3_600_000;
-    const sevenDays = 7 * 86_400_000;
+    const oneDayAgo  = now - 86_400_000;
+    const sixHours   = 6 * 3_600_000;
+    const sevenDays  = 7 * 86_400_000;
 
-    // Always use raw data if aggregation is disabled
     if (params.agg === 'NONE') {
       return this.queryRaw(params);
     }
 
-    // readings_1h only contains data older than 1 hour (due to end_offset policy)
-    // If query includes data from the last hour, use raw data but transform to aggregate format
-    if (params.endTs.getTime() > oneHourAgo) {
-      return this.transformRawToAggregate(params);
+    // Continuous aggregate views only contain data older than their end_offset.
+    // For anything that touches the last hour — or for short ranges where the
+    // overhead of a view scan outweighs a raw table scan — aggregate on raw.
+    if (params.endTs.getTime() > oneHourAgo || rangeMs < sixHours) {
+      return this.aggregateRaw(params);
     }
 
-    // For small ranges, use raw data transformed to aggregates
-    if (rangeMs < sixHours) {
-      return this.transformRawToAggregate(params);
-    }
-
-    // readings_1d only contains data older than 1 day (due to end_offset policy)
-    // If query includes data from the last day, use hourly aggregate or raw
     if (rangeMs >= sevenDays) {
+      // Spans >7 d but touches the last day → hourly view (daily not yet populated)
       if (params.endTs.getTime() > oneDayAgo) {
-        // Query spans multiple days but includes recent data - use hourly
         return this.queryAggregate('readings_1h', 'bucket', params);
       }
-      // All data is older than 1 day - safe to use daily aggregate
       return this.queryAggregate('readings_1d', 'bucket', params);
     }
 
-    // Range is 6h-7d and data is older than 1 hour - use hourly aggregate
+    // 6 h – 7 d, older than 1 h → hourly view
     return this.queryAggregate('readings_1h', 'bucket', params);
   }
 
@@ -244,7 +250,7 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     const result = await this.pool.query(
       `DELETE FROM sensor_readings
        WHERE organization_id = $1
-         AND phenomenon_time < NOW() - ($2 || ' days')::interval`,
+         AND phenomenon_time < NOW() - make_interval(days => $2)`,
       [organizationId, days],
     );
     return result.rowCount ?? 0;
@@ -273,74 +279,34 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
-  private extractNumericValue(processedData: any): number | null {
-    if (!processedData || typeof processedData !== 'object') return null;
-    
-    // Try common field names first
-    const commonFields = ['value', 'temperature', 'humidity', 'pressure', 'voltage', 'current', 'power'];
-    for (const field of commonFields) {
-      if (processedData[field] !== undefined && processedData[field] !== null) {
-        const val = Number(processedData[field]);
-        if (!isNaN(val)) return val;
-      }
-    }
-    
-    // Fallback: find first numeric value in any field
-    for (const key in processedData) {
-      const val = Number(processedData[key]);
-      if (!isNaN(val)) return val;
-    }
-    
-    return null;
-  }
-
-  private async transformRawToAggregate(params: TimeSeriesQueryParams) {
-    // Get raw data
-    const rawData = await this.queryRaw(params);
-    
-    // Group raw readings into buckets and compute aggregates
-    const bucketMap = new Map<number, number[]>();
-    const bucketSize = (params.intervalMs ?? 3_600_000);
-    
-    for (const row of rawData) {
-      const timestamp = new Date(row.phenomenon_time).getTime();
-      const bucketTime = Math.floor(timestamp / bucketSize) * bucketSize;
-      
-      // Extract numeric value from processed_data
-      const value = this.extractNumericValue(row.processed_data);
-      if (value !== null) {
-        if (!bucketMap.has(bucketTime)) {
-          bucketMap.set(bucketTime, []);
-        }
-        bucketMap.get(bucketTime)!.push(value);
-      }
-    }
-    
-    // Convert buckets to aggregate format
-    const aggregates = Array.from(bucketMap.entries())
-      .map(([bucketTime, values]) => ({
-        bucket: new Date(bucketTime),
-        avg_val: values.reduce((a, b) => a + b, 0) / values.length,
-        min_val: Math.min(...values),
-        max_val: Math.max(...values),
-        sample_count: values.length,
-      }))
-      .sort((a, b) => b.bucket.getTime() - a.bucket.getTime())
-      .slice(0, params.limit ?? 1000);
-    
-    return aggregates;
-  }
-
+  /**
+   * Raw keyset-paginated query.
+   *
+   * Cursor semantics depend on sort direction:
+   *   DESC → cursor acts as upper-exclusive bound (phenomenon_time < cursor)
+   *   ASC  → cursor acts as lower-exclusive bound (phenomenon_time > cursor)
+   */
   private async queryRaw(params: TimeSeriesQueryParams) {
+    const dir = params.sortDir ?? 'DESC';
     const args: unknown[] = [params.sensorId, params.startTs, params.endTs];
-    let cursorClause = '';
 
+    // Optional quality filter
+    let qualityClause = '';
+    if (params.minQuality !== undefined) {
+      args.push(params.minQuality);
+      qualityClause = `AND quality_code >= $${args.length}`;
+    }
+
+    // Keyset cursor
+    let cursorClause = '';
     if (params.cursor) {
       args.push(params.cursor);
-      cursorClause = `AND phenomenon_time < $${args.length}`;
+      cursorClause = dir === 'DESC'
+        ? `AND phenomenon_time < $${args.length}`
+        : `AND phenomenon_time > $${args.length}`;
     }
 
-    args.push(params.limit ?? 1000);
+    args.push(Math.min(params.limit ?? 1_000, 10_000));
     const limitPlaceholder = `$${args.length}`;
 
     const result = await this.pool.query(
@@ -349,8 +315,9 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
        WHERE sensor_id = $1
          AND phenomenon_time >= $2
          AND phenomenon_time <= $3
+         ${qualityClause}
          ${cursorClause}
-       ORDER BY phenomenon_time DESC
+       ORDER BY phenomenon_time ${dir}
        LIMIT ${limitPlaceholder}`,
       args,
     );
@@ -358,46 +325,130 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     return result.rows;
   }
 
+  /**
+   * SQL-side time-bucket aggregation on the raw `sensor_readings` table.
+   * Used for recent data or short ranges where continuous aggregate views
+   * are not yet populated.
+   *
+   * Requires `aggField` to be set so we know which JSONB key holds the
+   * numeric value.  Without it we skip numeric aggregates and return
+   * per-bucket sample counts only (still useful for event-rate charts).
+   */
+  private async aggregateRaw(params: TimeSeriesQueryParams) {
+    const intervalSec = Math.floor((params.intervalMs ?? 3_600_000) / 1000);
+    const dir = params.sortDir ?? 'DESC';
+
+    const args: unknown[] = [
+      `${intervalSec} seconds`,
+      params.sensorId,
+      params.startTs,
+      params.endTs,
+    ];
+
+    let qualityClause = '';
+    if (params.minQuality !== undefined) {
+      args.push(params.minQuality);
+      qualityClause = `AND quality_code >= $${args.length}`;
+    }
+
+    args.push(Math.min(params.limit ?? 1_000, 10_000));
+    const limitPlaceholder = `$${args.length}`;
+
+    let selectAgg: string;
+    let whereAgg = '';
+
+    if (params.aggField) {
+      // Parameterise the field name via jsonb operator to avoid injection
+      args.push(params.aggField);
+      const fieldParam = `$${args.length}`;
+      selectAgg = `
+        AVG((processed_data->>${fieldParam})::double precision)  AS avg_val,
+        MIN((processed_data->>${fieldParam})::double precision)  AS min_val,
+        MAX((processed_data->>${fieldParam})::double precision)  AS max_val,`;
+      // Only include rows where the field is a valid number
+      whereAgg = `AND (processed_data->>${fieldParam}) ~ '^-?[0-9]+(\\.[0-9]+)?$'`;
+    } else {
+      selectAgg = `
+        NULL::double precision AS avg_val,
+        NULL::double precision AS min_val,
+        NULL::double precision AS max_val,`;
+    }
+
+    const result = await this.pool.query(
+      `SELECT time_bucket($1::interval, phenomenon_time) AS bucket,
+              ${selectAgg}
+              COUNT(*)::int AS sample_count
+       FROM sensor_readings
+       WHERE sensor_id = $2
+         AND phenomenon_time >= $3
+         AND phenomenon_time <= $4
+         ${qualityClause}
+         ${whereAgg}
+       GROUP BY 1
+       ORDER BY 1 ${dir}
+       LIMIT ${limitPlaceholder}`,
+      args,
+    );
+
+    return result.rows;
+  }
+
+  /**
+   * Query a continuous-aggregate view (readings_1h / readings_1d).
+   * Falls back to `aggregateRaw` if the view is not yet populated for the range.
+   */
   private async queryAggregate(
     view: string,
     timeCol: string,
     params: TimeSeriesQueryParams,
   ) {
-    // Allowlist check — prevents SQL injection if view/timeCol are ever passed from user input
     if (!ALLOWED_VIEWS.has(view) || !ALLOWED_TIME_COLS.has(timeCol)) {
       throw new Error(`Invalid aggregate target: ${view}.${timeCol}`);
     }
 
     const intervalSec = Math.floor((params.intervalMs ?? 3_600_000) / 1000);
+    const dir = params.sortDir ?? 'DESC';
+
+    const args: unknown[] = [
+      `${intervalSec} seconds`,
+      params.sensorId,
+      params.startTs,
+      params.endTs,
+    ];
+
+    let qualityClause = '';
+    if (params.minQuality !== undefined) {
+      args.push(params.minQuality);
+      qualityClause = `AND quality_code >= $${args.length}`;
+    }
+
+    args.push(Math.min(params.limit ?? 1_000, 10_000));
+    const limitPlaceholder = `$${args.length}`;
 
     try {
       const result = await this.pool.query(
         `SELECT time_bucket($1::interval, ${timeCol}) AS bucket,
-                AVG(avg_val) AS avg_val,
-                MIN(min_val) AS min_val,
-                MAX(max_val) AS max_val,
-                SUM(sample_count) AS sample_count
+                AVG(avg_val)        AS avg_val,
+                MIN(min_val)        AS min_val,
+                MAX(max_val)        AS max_val,
+                SUM(sample_count)   AS sample_count
          FROM ${view}
          WHERE sensor_id = $2
            AND ${timeCol} >= $3
            AND ${timeCol} <= $4
+           ${qualityClause}
          GROUP BY 1
-         ORDER BY 1 DESC
-         LIMIT $5`,
-        [
-          `${intervalSec} seconds`,
-          params.sensorId,
-          params.startTs,
-          params.endTs,
-          params.limit ?? 1000,
-        ],
+         ORDER BY 1 ${dir}
+         LIMIT ${limitPlaceholder}`,
+        args,
       );
 
       return result.rows;
     } catch (err) {
-      // If aggregate query fails (e.g., view not populated yet), fallback to raw data
-      this.logger.warn(`Aggregate query failed for ${view}, falling back to raw data: ${err instanceof Error ? err.message : String(err)}`);
-      return this.transformRawToAggregate(params);
+      this.logger.warn(
+        `Aggregate query failed for ${view}, falling back to raw aggregation: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return this.aggregateRaw(params);
     }
   }
 }

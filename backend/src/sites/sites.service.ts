@@ -16,9 +16,15 @@ export class SitesService {
     private dataSource: DataSource,
   ) {}
 
-  async findAll(organizationId: string, page = 1, limit = 50) {
+  async findAll(organizationId: string, page = 1, limit = 50, groupId?: string | null) {
+    const where: any = { organizationId };
+    if (groupId !== undefined) {
+      // null means "ungrouped", a string means filter to that specific group
+      where.groupId = groupId ?? null;
+    }
+
     const [data, total] = await this.repo.findAndCount({
-      where: { organizationId },
+      where,
       skip: (page - 1) * limit,
       take: limit,
       order: { createdAt: 'DESC' },
@@ -44,7 +50,7 @@ export class SitesService {
     return site;
   }
 
-  async create(organizationId: string, data: { name: string; description?: string }) {
+  async create(organizationId: string, data: { name: string; description?: string; groupId?: string }) {
     const windowHours = this.config.get<number>('discovery.windowHours')!;
     const discoveryWindowEndsAt = new Date(Date.now() + windowHours * 3_600_000);
 
@@ -53,6 +59,7 @@ export class SitesService {
         organizationId,
         name: data.name,
         description: data.description,
+        groupId: data.groupId,
         commissioningStatus: 'DISCOVERY',
         discoveryWindowEndsAt,
       }),

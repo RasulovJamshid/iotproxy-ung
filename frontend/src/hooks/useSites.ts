@@ -29,9 +29,12 @@ export function useSite(id: string) {
 export function useCreateSite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; description?: string }) =>
+    mutationFn: (body: { name: string; description?: string; groupId?: string }) =>
       api.post('/sites', body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sites'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sites'] });
+      qc.invalidateQueries({ queryKey: ['site-groups'] });
+    },
   });
 }
 
@@ -50,7 +53,7 @@ export function useTransitionSite() {
 export function useUpdateSite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; description?: string; discoveryEnabled?: boolean }) =>
+    mutationFn: ({ id, ...body }: { id: string; name?: string; description?: string; discoveryEnabled?: boolean; groupId?: string | null }) =>
       api.patch(`/sites/${id}`, body).then((r) => r.data),
     onSuccess: (updated, { id }) => {
       qc.setQueryData(['sites', id], updated);

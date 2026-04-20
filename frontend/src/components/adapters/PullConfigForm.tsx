@@ -620,6 +620,22 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
   const [jsonataResult, setJsonataResult] = useState<{ result: unknown; readings: unknown[] } | null>(null);
   const [jsonataError, setJsonataError] = useState('');
 
+  // Time parameters state
+  const [timeParamsEnabled, setTimeParamsEnabled] = useState(false);
+  const [startTimeMode, setStartTimeMode] = useState<'relative' | 'absolute' | 'expression'>('relative');
+  const [startTimeOffset, setStartTimeOffset] = useState(-3600); // -1 hour default
+  const [startTimeAbsolute, setStartTimeAbsolute] = useState('');
+  const [startTimeExpression, setStartTimeExpression] = useState('');
+  const [endTimeMode, setEndTimeMode] = useState<'relative' | 'absolute' | 'expression'>('relative');
+  const [endTimeOffset, setEndTimeOffset] = useState(0); // now default
+  const [endTimeAbsolute, setEndTimeAbsolute] = useState('');
+  const [endTimeExpression, setEndTimeExpression] = useState('');
+  const [timeFormat, setTimeFormat] = useState<'iso8601' | 'unix_ms' | 'unix_s' | 'custom'>('iso8601');
+  const [timeCustomFormat, setTimeCustomFormat] = useState('');
+  const [timeStartParamName, setTimeStartParamName] = useState('startTime');
+  const [timeEndParamName, setTimeEndParamName] = useState('endTime');
+  const [timeLocation, setTimeLocation] = useState<'query' | 'body'>('query');
+
   const updateAdapter = useUpdateAdapter();
   const evaluateJsonata = useEvaluateJsonata();
   const [showTemplateModal, setShowTemplateModal] = useState(false);
@@ -661,6 +677,28 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
               : '$.data'
           );
         }
+      }
+
+      // Load time parameters
+      if (adapter.pullTimeParams) {
+        setTimeParamsEnabled(adapter.pullTimeParams.enabled);
+        if (adapter.pullTimeParams.startTime) {
+          setStartTimeMode(adapter.pullTimeParams.startTime.mode);
+          setStartTimeOffset(adapter.pullTimeParams.startTime.relativeOffset ?? -3600);
+          setStartTimeAbsolute(adapter.pullTimeParams.startTime.absoluteValue ?? '');
+          setStartTimeExpression(adapter.pullTimeParams.startTime.expression ?? '');
+        }
+        if (adapter.pullTimeParams.endTime) {
+          setEndTimeMode(adapter.pullTimeParams.endTime.mode);
+          setEndTimeOffset(adapter.pullTimeParams.endTime.relativeOffset ?? 0);
+          setEndTimeAbsolute(adapter.pullTimeParams.endTime.absoluteValue ?? '');
+          setEndTimeExpression(adapter.pullTimeParams.endTime.expression ?? '');
+        }
+        setTimeFormat(adapter.pullTimeParams.format);
+        setTimeCustomFormat(adapter.pullTimeParams.customFormat ?? '');
+        setTimeStartParamName(adapter.pullTimeParams.startParamName ?? 'startTime');
+        setTimeEndParamName(adapter.pullTimeParams.endParamName ?? 'endTime');
+        setTimeLocation(adapter.pullTimeParams.location);
       }
     }
   }, [adapter]);
@@ -734,6 +772,28 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
           },
         };
 
+    // Build time parameters config
+    const pullTimeParams = timeParamsEnabled ? {
+      enabled: true,
+      startTime: {
+        mode: startTimeMode,
+        relativeOffset: startTimeMode === 'relative' ? startTimeOffset : undefined,
+        absoluteValue: startTimeMode === 'absolute' ? startTimeAbsolute : undefined,
+        expression: startTimeMode === 'expression' ? startTimeExpression : undefined,
+      },
+      endTime: {
+        mode: endTimeMode,
+        relativeOffset: endTimeMode === 'relative' ? endTimeOffset : undefined,
+        absoluteValue: endTimeMode === 'absolute' ? endTimeAbsolute : undefined,
+        expression: endTimeMode === 'expression' ? endTimeExpression : undefined,
+      },
+      format: timeFormat,
+      customFormat: timeFormat === 'custom' ? timeCustomFormat : undefined,
+      startParamName: timeStartParamName,
+      endParamName: timeEndParamName,
+      location: timeLocation,
+    } : { enabled: false };
+
     try {
       await updateAdapter.mutateAsync({
         siteId,
@@ -755,6 +815,7 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
               ? { value: authValue }
               : { username: authUsername, password: authPassword },
           responseMapping,
+          pullTimeParams,
         },
       });
       alert('Pull configuration saved');
@@ -1000,6 +1061,240 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Time Parameters */}
+          <div className="border-t border-gray-200 dark:border-slate-800 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-200">Time Parameters</h3>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={timeParamsEnabled}
+                  onChange={(e) => setTimeParamsEnabled(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-600 dark:text-slate-400">Enable dynamic time ranges</span>
+              </label>
+            </div>
+
+            {timeParamsEnabled && (
+              <div className="space-y-4 pl-4 border-l-2 border-blue-200 dark:border-blue-900">
+                {/* Start Time */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+                    Start Time
+                  </label>
+                  <div className="space-y-2">
+                    <select
+                      value={startTimeMode}
+                      onChange={(e) => setStartTimeMode(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="relative">Relative (offset from now)</option>
+                      <option value="absolute">Absolute timestamp</option>
+                      <option value="expression">Expression</option>
+                    </select>
+
+                    {startTimeMode === 'relative' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-slate-400 mb-1">
+                          Offset (seconds, negative for past)
+                        </label>
+                        <input
+                          type="number"
+                          value={startTimeOffset}
+                          onChange={(e) => setStartTimeOffset(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="-3600"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+                          Example: -3600 = 1 hour ago
+                        </p>
+                      </div>
+                    )}
+
+                    {startTimeMode === 'absolute' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-slate-400 mb-1">
+                          ISO 8601 timestamp
+                        </label>
+                        <input
+                          type="text"
+                          value={startTimeAbsolute}
+                          onChange={(e) => setStartTimeAbsolute(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="2024-01-01T00:00:00Z"
+                        />
+                      </div>
+                    )}
+
+                    {startTimeMode === 'expression' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-slate-400 mb-1">
+                          Expression (use $now, $lastPoll, $intervalSec)
+                        </label>
+                        <input
+                          type="text"
+                          value={startTimeExpression}
+                          onChange={(e) => setStartTimeExpression(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="$lastPoll"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+                          Example: $now - 3600000 (1 hour in ms)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* End Time */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+                    End Time
+                  </label>
+                  <div className="space-y-2">
+                    <select
+                      value={endTimeMode}
+                      onChange={(e) => setEndTimeMode(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="relative">Relative (offset from now)</option>
+                      <option value="absolute">Absolute timestamp</option>
+                      <option value="expression">Expression</option>
+                    </select>
+
+                    {endTimeMode === 'relative' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-slate-400 mb-1">
+                          Offset (seconds, negative for past)
+                        </label>
+                        <input
+                          type="number"
+                          value={endTimeOffset}
+                          onChange={(e) => setEndTimeOffset(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+                          Example: 0 = now
+                        </p>
+                      </div>
+                    )}
+
+                    {endTimeMode === 'absolute' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-slate-400 mb-1">
+                          ISO 8601 timestamp
+                        </label>
+                        <input
+                          type="text"
+                          value={endTimeAbsolute}
+                          onChange={(e) => setEndTimeAbsolute(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="2024-12-31T23:59:59Z"
+                        />
+                      </div>
+                    )}
+
+                    {endTimeMode === 'expression' && (
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-slate-400 mb-1">
+                          Expression (use $now, $lastPoll, $intervalSec)
+                        </label>
+                        <input
+                          type="text"
+                          value={endTimeExpression}
+                          onChange={(e) => setEndTimeExpression(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="$now"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Format and Parameter Names */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                      Output Format
+                    </label>
+                    <select
+                      value={timeFormat}
+                      onChange={(e) => setTimeFormat(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="iso8601">ISO 8601</option>
+                      <option value="unix_ms">Unix milliseconds</option>
+                      <option value="unix_s">Unix seconds</option>
+                      <option value="custom">Custom format</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                      Location
+                    </label>
+                    <select
+                      value={timeLocation}
+                      onChange={(e) => setTimeLocation(e.target.value as any)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="query">Query parameters</option>
+                      <option value="body">Request body</option>
+                    </select>
+                  </div>
+                </div>
+
+                {timeFormat === 'custom' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                      Custom Format String
+                    </label>
+                    <input
+                      type="text"
+                      value={timeCustomFormat}
+                      onChange={(e) => setTimeCustomFormat(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="YYYY-MM-DD HH:mm:ss"
+                    />
+                    <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
+                      Use: YYYY, MM, DD, HH, mm, ss
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                      Start Parameter Name
+                    </label>
+                    <input
+                      type="text"
+                      value={timeStartParamName}
+                      onChange={(e) => setTimeStartParamName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="startTime"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                      End Parameter Name
+                    </label>
+                    <input
+                      type="text"
+                      value={timeEndParamName}
+                      onChange={(e) => setTimeEndParamName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="endTime"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Response Mapping */}

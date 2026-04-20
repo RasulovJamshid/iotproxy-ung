@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { SitesModule } from './sites/sites.module';
+import { SiteGroupsModule } from './site-groups/site-groups.module';
 import { SensorsModule } from './sensors/sensors.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { IngestModule } from './ingest/ingest.module';
@@ -64,6 +65,7 @@ import { QUEUE_NAMES } from '@iotproxy/shared';
     ApiKeysModule,
     OrganizationsModule,
     SitesModule,
+    SiteGroupsModule,
     SensorsModule,
     DiscoveryModule,
     IngestModule,

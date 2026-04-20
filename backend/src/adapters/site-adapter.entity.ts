@@ -55,6 +55,39 @@ export interface PullAuthConfig {
   password?:   string; // basicAuth
 }
 
+// ── Time parameters for dynamic time range calculation ───────────────────────
+
+export type TimeParamMode = 'relative' | 'absolute' | 'expression';
+export type TimeFormat = 'iso8601' | 'unix_ms' | 'unix_s' | 'custom';
+
+export interface TimeParamConfig {
+  mode: TimeParamMode;
+  /** Relative: offset in seconds from reference time (negative = past, positive = future) */
+  relativeOffset?: number;
+  /** Absolute: fixed ISO-8601 timestamp */
+  absoluteValue?: string;
+  /** Expression: JSONata expression with bindings: $now, $lastPoll, $intervalSec */
+  expression?: string;
+}
+
+export interface PullTimeParams {
+  enabled: boolean;
+  /** Start time configuration */
+  startTime?: TimeParamConfig;
+  /** End time configuration */
+  endTime?: TimeParamConfig;
+  /** Output format for the time values */
+  format: TimeFormat;
+  /** Custom format string (e.g., "YYYY-MM-DD HH:mm:ss") - only used when format = 'custom' */
+  customFormat?: string;
+  /** Query parameter name for start time (default: "startTime") */
+  startParamName?: string;
+  /** Query parameter name for end time (default: "endTime") */
+  endParamName?: string;
+  /** Location: where to inject the time params */
+  location: 'query' | 'body';
+}
+
 // ── Entity ────────────────────────────────────────────────────────────────────
 
 @Entity('site_adapters')
@@ -108,6 +141,9 @@ export class SiteAdapter {
 
   @Column({ name: 'pull_interval_sec', default: 60 })
   pullIntervalSec!: number;
+
+  @Column({ name: 'pull_time_params', type: 'jsonb', nullable: true })
+  pullTimeParams?: PullTimeParams;
 
   @Column({ name: 'response_mapping', type: 'jsonb', nullable: true })
   responseMapping?: ResponseMapping;

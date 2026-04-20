@@ -40,12 +40,24 @@ export class PullWorker extends WorkerHost implements OnModuleInit {
     const lastPollAt  = adapter.pullLastAt?.toISOString() ?? new Date(Date.now() - adapter.pullIntervalSec * 1000).toISOString();
     const templateVars = { now, lastPollAt, siteId: adapter.siteId };
 
+    // Calculate time parameters if enabled
+    const timeParams = adapter.pullTimeParams?.enabled 
+      ? this.calculateTimeParams(adapter.pullTimeParams, now, lastPollAt, adapter.pullIntervalSec)
+      : {};
+
     // Build URL (with optional query params)
     let url = interpolate(adapter.pullUrl, templateVars);
-    if (adapter.pullQueryParams && Object.keys(adapter.pullQueryParams).length > 0) {
+    const queryParams = { ...adapter.pullQueryParams };
+    
+    // Add time params to query if location is 'query'
+    if (adapter.pullTimeParams?.enabled && adapter.pullTimeParams.location === 'query') {
+      Object.assign(queryParams, timeParams);
+    }
+    
+    if (queryParams && Object.keys(queryParams).length > 0) {
       const qs = new URLSearchParams(
         Object.fromEntries(
-          Object.entries(adapter.pullQueryParams).map(([k, v]) => [k, interpolate(v, templateVars)]),
+          Object.entries(queryParams).map(([k, v]) => [k, interpolate(String(v), templateVars)]),
         ),
       );
       url += (url.includes('?') ? '&' : '?') + qs.toString();
@@ -62,7 +74,12 @@ export class PullWorker extends WorkerHost implements OnModuleInit {
     // Build body (POST only)
     let body: string | undefined;
     if (adapter.pullMethod === 'POST' && adapter.pullBodyTemplate) {
-      body = JSON.stringify(interpolateObj(adapter.pullBodyTemplate, templateVars));
+      let bodyObj = interpolateObj(adapter.pullBodyTemplate, templateVars);
+      // Add time params to body if location is 'body'
+      if (adapter.pullTimeParams?.enabled && adapter.pullTimeParams.location === 'body') {
+        bodyObj = { ...bodyObj, ...timeParams };
+      }
+      body = JSON.stringify(bodyObj);
     }
 
     this.logger.debug(`Pull ${adapter.id}: ${adapter.pullMethod} ${url}`);
@@ -166,6 +183,105 @@ export class PullWorker extends WorkerHost implements OnModuleInit {
           headers['Authorization'] = `Basic ${encoded}`;
         }
         break;
+    }
+  }
+
+  private calculateTimeParams(
+    config: any,
+    nowIso: string,
+    lastPollIso: string,
+    intervalSec: number,
+  ): Record<string, string> {
+    const result: Record<string, string> = {};
+    const nowMs = new Date(nowIso).getTime();
+    const lastPollMs = new Date(lastPollIso).getTime();
+
+    // Calculate start time
+    if (config.startTime) {
+      const startMs = this.calculateTimeValue(config.startTime, nowMs, lastPollMs, intervalSec);
+      const startParamName = config.startParamName || 'startTime';
+      result[startParamName] = this.formatTime(startMs, config.format, config.customFormat);
+    }
+
+    // Calculate end time
+    if (config.endTime) {
+      const endMs = this.calculateTimeValue(config.endTime, nowMs, lastPollMs, intervalSec);
+      const endParamName = config.endParamName || 'endTime';
+      result[endParamName] = this.formatTime(endMs, config.format, config.customFormat);
+    }
+
+    return result;
+  }
+
+  private calculateTimeValue(
+    timeConfig: any,
+    nowMs: number,
+    lastPollMs: number,
+    intervalSec: number,
+  ): number {
+    switch (timeConfig.mode) {
+      case 'relative':
+        // Offset in seconds from now
+        const offsetMs = (timeConfig.relativeOffset || 0) * 1000;
+        return nowMs + offsetMs;
+
+      case 'absolute':
+        // Fixed timestamp
+        return new Date(timeConfig.absoluteValue || nowMs).getTime();
+
+      case 'expression':
+        // JSONata expression evaluation
+        // For now, support simple expressions via eval (in production, use a proper JSONata library)
+        try {
+          const $now = nowMs;
+          const $lastPoll = lastPollMs;
+          const $intervalSec = intervalSec;
+          // Simple eval for basic expressions like "$now - 3600000" or "$lastPoll"
+          // In production, replace with proper JSONata evaluation
+          const expr = timeConfig.expression
+            .replace(/\$now/g, String($now))
+            .replace(/\$lastPoll/g, String($lastPoll))
+            .replace(/\$intervalSec/g, String($intervalSec));
+          // eslint-disable-next-line no-eval
+          return Number(eval(expr));
+        } catch (err) {
+          this.logger.warn(`Failed to evaluate time expression: ${timeConfig.expression}`);
+          return nowMs;
+        }
+
+      default:
+        return nowMs;
+    }
+  }
+
+  private formatTime(timestampMs: number, format: string, customFormat?: string): string {
+    const date = new Date(timestampMs);
+
+    switch (format) {
+      case 'iso8601':
+        return date.toISOString();
+
+      case 'unix_ms':
+        return String(timestampMs);
+
+      case 'unix_s':
+        return String(Math.floor(timestampMs / 1000));
+
+      case 'custom':
+        // Simple custom format support (YYYY-MM-DD HH:mm:ss)
+        if (customFormat) {
+          return customFormat
+            .replace('YYYY', String(date.getUTCFullYear()))
+            .replace('MM', String(date.getUTCMonth() + 1).padStart(2, '0'))
+            .replace('DD', String(date.getUTCDate()).padStart(2, '0'))
+            .replace('HH', String(date.getUTCHours()).padStart(2, '0'))
+            .replace('mm', String(date.getUTCMinutes()).padStart(2, '0'))
+            .replace('ss', String(date.getUTCSeconds()).padStart(2, '0'));
+        }
+        return date.toISOString();
+
+      default:
+        return date.toISOString();
     }
   }
 }

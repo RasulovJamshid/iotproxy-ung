@@ -4,6 +4,7 @@ import {
 } from 'typeorm';
 import { Organization } from '../organizations/organization.entity';
 import { Sensor } from '../sensors/sensor.entity';
+import { SiteGroup } from '../site-groups/site-group.entity';
 
 @Entity('sites')
 export class Site {
@@ -40,6 +41,37 @@ export class Site {
 
   @Column({ name: 'timescale_chunk_interval', default: '7 days' })
   timescaleChunkInterval!: string;
+
+  @Column({ name: 'group_id', nullable: true })
+  groupId?: string;
+
+  @ManyToOne(() => SiteGroup, (g) => g.sites, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'group_id' })
+  group?: SiteGroup;
+
+  // Geolocation
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  latitude?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  longitude?: number;
+
+  @Column({ nullable: true })
+  timezone?: string; // IANA timezone (e.g., 'America/New_York')
+
+  // Site classification
+  @Column({ name: 'site_type', nullable: true })
+  siteType?: string; // FACTORY | WAREHOUSE | OFFICE | OUTDOOR | MOBILE | RESIDENTIAL | OTHER
+
+  // Flexible metadata
+  @Column({ type: 'jsonb', nullable: true })
+  tags?: string[]; // Array of custom tags for filtering/grouping
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata?: Record<string, unknown>; // Arbitrary key-value pairs
+
+  @Column({ name: 'custom_fields', type: 'jsonb', nullable: true })
+  customFields?: Record<string, unknown>; // Customer-specific fields
 
   @OneToMany(() => Sensor, (s) => s.site)
   sensors!: Sensor[];

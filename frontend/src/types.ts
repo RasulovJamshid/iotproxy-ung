@@ -26,15 +26,38 @@ export interface OrgUser {
   createdAt: string;
 }
 
+export interface SiteGroup {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  color?: string;
+  siteCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Site {
   id: string;
   organizationId: string;
+  groupId?: string;
+  group?: SiteGroup;
   name: string;
   description?: string;
   commissioningStatus: string;
   connectivityStatus: string;
   lastSeenAt?: string;
   discoveryWindowEndsAt?: string;
+  // Geolocation
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+  // Site classification
+  siteType?: string;
+  // Flexible metadata
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  customFields?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }

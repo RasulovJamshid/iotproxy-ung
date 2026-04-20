@@ -24,6 +24,7 @@ export class SitesController {
     @Query('orgId') orgIdParam?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('groupId') groupId?: string,
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {
@@ -47,7 +48,12 @@ export class SitesController {
     }
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? Math.min(parseInt(limit, 10), 500) : 50;
-    return this.service.findAll(organizationId, pageNum, limitNum);
+    // groupId='none' → ungrouped only; a UUID → filter by that group; absent → all
+    const resolvedGroupId =
+      groupId === 'none' ? null
+      : groupId            ? groupId
+      : undefined;
+    return this.service.findAll(organizationId, pageNum, limitNum, resolvedGroupId);
   }
 
   @Get(':id')
