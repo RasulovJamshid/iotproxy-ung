@@ -28,8 +28,8 @@ export class SiteGroupsController {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
 
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
 
     return this.service.findAll(organizationId);
@@ -44,8 +44,8 @@ export class SiteGroupsController {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
 
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
 
     return this.service.findOne(id, organizationId);

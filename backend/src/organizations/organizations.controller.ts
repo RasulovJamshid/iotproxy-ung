@@ -48,6 +48,21 @@ export class OrganizationsController {
     return this.service.update(id, body);
   }
 
+  @Patch(':id/retention-defaults')
+  @Roles('ADMIN')
+  updateRetentionDefaults(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+    @Body() body: {
+      defaultRawRetentionDays?: number | null;
+      defaultSummaryRetentionMonths?: number | null;
+      defaultSummaryAggMode?: string | null;
+    },
+  ) {
+    const orgId = user.role === 'SYSTEM_ADMIN' ? id : user.organizationId;
+    return this.service.update(orgId, body as any);
+  }
+
   // ── Users / membership ────────────────────────────────────────────────────
 
   @Get(':id/users')

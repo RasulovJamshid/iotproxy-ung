@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useOrganization, useUpdateOrganization, useOrgUsers } from '../hooks/useOrganization';
+import { useOrganization, useUpdateOrganization, useUpdateOrgRetentionDefaults, useOrgUsers } from '../hooks/useOrganization';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { PageSpinner } from '../components/ui/Spinner';
@@ -14,13 +14,17 @@ function EditIcon() {
   );
 }
 
+const AGG_MODES = ['AVG', 'MIN', 'MAX', 'SUM', 'COUNT'];
+
 export default function SettingsPage() {
   const { data: org, isLoading: orgLoading } = useOrganization();
   const { data: users, isLoading: usersLoading } = useOrgUsers();
   const updateOrg = useUpdateOrganization();
+  const updateRetention = useUpdateOrgRetentionDefaults();
   const { user } = useAuth();
 
   const isSysAdmin = user?.role === 'SYSTEM_ADMIN';
+  const isAdmin = user?.role === 'ADMIN' || isSysAdmin;
 
   const [editOpen, setEditOpen] = useState(false);
   const [name, setName] = useState('');
@@ -28,6 +32,11 @@ export default function SettingsPage() {
   const [rateLimitRpm, setRateLimitRpm] = useState('');
   const [rawRetentionDays, setRawRetentionDays] = useState('');
   const [isActive, setIsActive] = useState(true);
+
+  const [retentionOpen, setRetentionOpen] = useState(false);
+  const [defRawDays, setDefRawDays] = useState('');
+  const [defSummaryMonths, setDefSummaryMonths] = useState('');
+  const [defAggMode, setDefAggMode] = useState('AVG');
 
   useEffect(() => {
     if (org && editOpen) {
@@ -39,6 +48,14 @@ export default function SettingsPage() {
     }
   }, [org, editOpen]);
 
+  useEffect(() => {
+    if (org && retentionOpen) {
+      setDefRawDays(org.defaultRawRetentionDays != null ? String(org.defaultRawRetentionDays) : '');
+      setDefSummaryMonths(org.defaultSummaryRetentionMonths != null ? String(org.defaultSummaryRetentionMonths) : '');
+      setDefAggMode(org.defaultSummaryAggMode ?? 'AVG');
+    }
+  }, [org, retentionOpen]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     await updateOrg.mutateAsync({
@@ -49,6 +66,16 @@ export default function SettingsPage() {
       isActive,
     });
     setEditOpen(false);
+  };
+
+  const handleRetentionSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await updateRetention.mutateAsync({
+      defaultRawRetentionDays: defRawDays !== '' ? parseInt(defRawDays, 10) : null,
+      defaultSummaryRetentionMonths: defSummaryMonths !== '' ? parseInt(defSummaryMonths, 10) : null,
+      defaultSummaryAggMode: defAggMode || null,
+    });
+    setRetentionOpen(false);
   };
 
   if (orgLoading) return <PageSpinner />;
@@ -87,6 +114,49 @@ export default function SettingsPage() {
         ) : (
           <p className="text-sm text-slate-400 dark:text-slate-500">Unable to load organization details.</p>
         )}
+      </div>
+
+      {/* Data retention defaults */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Data Retention Defaults</h3>
+          {isAdmin && org && (
+            <button
+              onClick={() => setRetentionOpen(true)}
+              className="btn-secondary flex items-center gap-1.5 text-xs py-1 px-2.5"
+            >
+              <EditIcon /> Edit
+            </button>
+          )}
+        </div>
+        {org ? (
+          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {[
+              {
+                label: 'Default raw retention',
+                value: org.defaultRawRetentionDays != null ? `${org.defaultRawRetentionDays} days` : 'Not set',
+              },
+              {
+                label: 'Default summary retention',
+                value: org.defaultSummaryRetentionMonths != null ? `${org.defaultSummaryRetentionMonths} months` : 'Not set',
+              },
+              {
+                label: 'Default aggregation mode',
+                value: org.defaultSummaryAggMode ?? 'Not set',
+              },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <dt className="text-xs text-slate-400 dark:text-slate-500">{label}</dt>
+                <dd className="mt-0.5 text-sm font-medium text-slate-700 dark:text-slate-200">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="text-sm text-slate-400 dark:text-slate-500">Unable to load organization details.</p>
+        )}
+        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+          Fallback chain: sensor config → site default → org default. Sites can override these defaults individually.
+        </p>
       </div>
 
       {/* Current user */}
@@ -138,6 +208,68 @@ export default function SettingsPage() {
           </table>
         )}
       </div>
+
+      {/* Retention defaults modal — ADMIN+ */}
+      <Modal open={retentionOpen} onClose={() => setRetentionOpen(false)} title="Edit Retention Defaults">
+        <form onSubmit={handleRetentionSave} className="space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            These are org-wide defaults. Individual sites or sensors can override them.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
+                Raw retention (days)
+              </label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                placeholder="e.g. 7"
+                value={defRawDays}
+                onChange={(e) => setDefRawDays(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
+                Summary retention (months)
+              </label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                placeholder="e.g. 6"
+                value={defSummaryMonths}
+                onChange={(e) => setDefSummaryMonths(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
+              Aggregation mode
+            </label>
+            <select
+              className="input"
+              value={defAggMode}
+              onChange={(e) => setDefAggMode(e.target.value)}
+            >
+              {AGG_MODES.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          {updateRetention.error && (
+            <p className="text-sm text-red-600">
+              {(updateRetention.error as any)?.response?.data?.message ?? 'Failed to save'}
+            </p>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setRetentionOpen(false)} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={updateRetention.isPending} className="btn-primary">
+              {updateRetention.isPending ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Edit org modal — SYSTEM_ADMIN only */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Organization">

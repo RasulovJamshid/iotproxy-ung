@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSite, useTransitionSite, useUpdateSite, useTransferSite } from '../hooks/useSites';
 import { useSensors, useCreateSensor } from '../hooks/useSensors';
@@ -12,6 +12,7 @@ import { PageSpinner } from '../components/ui/Spinner';
 import { Tooltip } from '../components/ui/Tooltip';
 import { DiscoveryPanel } from '../components/DiscoveryPanel';
 import { LiveReadingsFeed } from '../components/LiveReadingsFeed';
+import { ReadingsExplorer } from '../components/ReadingsExplorer';
 import { formatDistanceToNow } from 'date-fns';
 
 const COMMISSIONING_TRANSITIONS: Record<string, string[]> = {
@@ -34,6 +35,7 @@ export default function SiteDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isSysAdmin = user?.role === 'SYSTEM_ADMIN';
+  const isAdmin = user?.role === 'ADMIN' || isSysAdmin;
 
   const { data: site, isLoading: siteLoading } = useSite(id!);
   const { data: sensorsResponse, isLoading: sensorsLoading } = useSensors(id);
@@ -55,6 +57,19 @@ export default function SiteDetailPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferOrgId, setTransferOrgId] = useState('');
   const [transferConfirmOpen, setTransferConfirmOpen] = useState(false);
+
+  const [retentionOpen, setRetentionOpen] = useState(false);
+  const [defRawDays, setDefRawDays] = useState('');
+  const [defSummaryMonths, setDefSummaryMonths] = useState('');
+  const [defAggMode, setDefAggMode] = useState('AVG');
+
+  useEffect(() => {
+    if (site && retentionOpen) {
+      setDefRawDays(site.defaultRawRetentionDays != null ? String(site.defaultRawRetentionDays) : '');
+      setDefSummaryMonths(site.defaultSummaryRetentionMonths != null ? String(site.defaultSummaryRetentionMonths) : '');
+      setDefAggMode(site.defaultSummaryAggMode ?? 'AVG');
+    }
+  }, [site, retentionOpen]);
 
   if (siteLoading) return <PageSpinner />;
   if (!site) return <p className="text-sm text-slate-500 dark:text-slate-400">Site not found.</p>;
@@ -291,6 +306,120 @@ export default function SiteDetailPage() {
         )}
       </div>
 
+      {/* Site retention defaults */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Data Retention Defaults</h3>
+          {isAdmin && (
+            <button
+              onClick={() => setRetentionOpen(true)}
+              className="btn-secondary text-xs py-1 px-2.5"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {[
+            {
+              label: 'Raw retention',
+              value: site.defaultRawRetentionDays != null ? `${site.defaultRawRetentionDays} days` : 'Inherit from org',
+            },
+            {
+              label: 'Summary retention',
+              value: site.defaultSummaryRetentionMonths != null ? `${site.defaultSummaryRetentionMonths} months` : 'Inherit from org',
+            },
+            {
+              label: 'Aggregation mode',
+              value: site.defaultSummaryAggMode ?? 'Inherit from org',
+            },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <dt className="text-xs text-slate-400 dark:text-slate-500">{label}</dt>
+              <dd className="mt-0.5 text-sm font-medium text-slate-700 dark:text-slate-200">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+          Overrides the org default for sensors in this site. Individual sensors can still set their own values.
+        </p>
+      </div>
+
+      {/* Retention modal */}
+      <Modal open={retentionOpen} onClose={() => setRetentionOpen(false)} title="Edit Site Retention Defaults">
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await updateSite.mutateAsync({
+              id: id!,
+              defaultRawRetentionDays: defRawDays !== '' ? parseInt(defRawDays, 10) : null,
+              defaultSummaryRetentionMonths: defSummaryMonths !== '' ? parseInt(defSummaryMonths, 10) : null,
+              defaultSummaryAggMode: defAggMode || null,
+            });
+            setRetentionOpen(false);
+          }}
+          className="space-y-4"
+        >
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Leave a field empty to inherit from the org default.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
+                Raw retention (days)
+              </label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                placeholder="Inherit from org"
+                value={defRawDays}
+                onChange={(e) => setDefRawDays(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
+                Summary retention (months)
+              </label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                placeholder="Inherit from org"
+                value={defSummaryMonths}
+                onChange={(e) => setDefSummaryMonths(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
+              Aggregation mode
+            </label>
+            <select
+              className="input"
+              value={defAggMode}
+              onChange={(e) => setDefAggMode(e.target.value)}
+            >
+              <option value="">Inherit from org</option>
+              {['AVG', 'MIN', 'MAX', 'SUM', 'COUNT'].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          {updateSite.error && (
+            <p className="text-sm text-red-600">
+              {(updateSite.error as any)?.response?.data?.message ?? 'Failed to save'}
+            </p>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setRetentionOpen(false)} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={updateSite.isPending} className="btn-primary">
+              {updateSite.isPending ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Discovery panel */}
       {site.commissioningStatus === 'REVIEW' && (
         <div className="card">
@@ -309,6 +438,12 @@ export default function SiteDetailPage() {
           <LiveReadingsFeed siteId={id!} />
         </div>
       )}
+
+      {/* Explore Readings */}
+      <div className="card">
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4">Explore Readings</h3>
+        <ReadingsExplorer siteId={id!} multiSensor />
+      </div>
 
       {/* Transfer site modal */}
       <Modal open={transferOpen} onClose={() => setTransferOpen(false)} title="Transfer Site to Another Organization" width="max-w-md">

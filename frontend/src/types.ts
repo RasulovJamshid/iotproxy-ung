@@ -61,6 +61,10 @@ export interface Site {
   tags?: string[];
   metadata?: Record<string, unknown>;
   customFields?: Record<string, unknown>;
+  // Data retention defaults
+  defaultRawRetentionDays?: number | null;
+  defaultSummaryRetentionMonths?: number | null;
+  defaultSummaryAggMode?: string | null;
   createdAt: string;
   updatedAt: string;
 }

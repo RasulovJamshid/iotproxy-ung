@@ -11,6 +11,7 @@ import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PageSpinner } from '../components/ui/Spinner';
 import { SensorConfigForm } from '../components/SensorConfigForm';
+import { ReadingsExplorer } from '../components/ReadingsExplorer';
 import { api } from '../api/client';
 import { formatDistanceToNow, subHours } from 'date-fns';
 import { useSensorTypes } from '../hooks/useSensorTypes';
@@ -73,7 +74,7 @@ export default function SensorDetailPage() {
   const { actualTheme } = useTheme();
   const [rangeHours, setRangeHours] = useState(24);
   const [rawRangeHours, setRawRangeHours] = useState(24);
-  const [bottomTab, setBottomTab] = useState<'readings' | 'alerts' | 'config' | 'virtual'>('readings');
+  const [bottomTab, setBottomTab] = useState<'readings' | 'explore' | 'alerts' | 'config' | 'virtual'>('readings');
   const [virtualOpen, setVirtualOpen] = useState(false);
   const [vName, setVName] = useState('');
   const [vFormula, setVFormula] = useState('');
@@ -474,7 +475,7 @@ export default function SensorDetailPage() {
       {/* Bottom tabs */}
       <div className="card">
         <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700 mb-4 -mt-2">
-          {(['readings', 'alerts', 'config', 'virtual'] as const).map((t) => (
+          {(['readings', 'explore', 'alerts', 'config', 'virtual'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setBottomTab(t)}
@@ -484,7 +485,7 @@ export default function SensorDetailPage() {
                   : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
-              {t === 'virtual' ? 'Virtual Sensors' : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'virtual' ? 'Virtual Sensors' : t === 'explore' ? 'Explore Data' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
@@ -635,6 +636,10 @@ export default function SensorDetailPage() {
             </div>
           );
         })()}
+
+        {bottomTab === 'explore' && (
+          <ReadingsExplorer sensorIds={[id!]} />
+        )}
 
         {bottomTab === 'alerts' && (
           !events || events.length === 0 ? (

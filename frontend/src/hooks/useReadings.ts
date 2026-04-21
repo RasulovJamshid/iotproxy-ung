@@ -74,6 +74,80 @@ export function useDeleteReading() {
   });
 }
 
+// ── Advanced search ────────────────────────────────────────────────────────
+
+export interface SearchReadingsParams {
+  sensorIds?: string[];
+  siteId?: string;
+  startTs?: string;
+  endTs?: string;
+  /** Exact clock time, e.g. "11:00" — only readings at that time of day */
+  exactTime?: string;
+  agg?: 'AVG' | 'MIN' | 'MAX' | 'SUM' | 'COUNT' | 'NONE';
+  intervalMs?: number;
+  aggField?: string;
+  sortBy?: 'time' | 'value' | 'sensor' | 'quality';
+  sortDir?: 'ASC' | 'DESC';
+  minQuality?: number;
+  limit?: number;
+  offset?: number;
+  fields?: string[];
+}
+
+export interface SearchMeta {
+  total: number;
+  limit: number;
+  offset: number;
+  returned: number;
+  dataStart: string | null;
+  dataEnd: string | null;
+}
+
+export interface SearchReadingsResult {
+  data: Array<Record<string, unknown>>;
+  meta: SearchMeta;
+}
+
+export function useSearchReadings(params: SearchReadingsParams, enabled = true) {
+  return useQuery({
+    queryKey: ['search-readings', params],
+    queryFn: async () => {
+      const { data } = await api.post('/query/readings/search', params);
+      return data as SearchReadingsResult;
+    },
+    enabled,
+  });
+}
+
+export function useNearestReadings(
+  sensorIds: string[],
+  targetTime: string,
+  maxPerSensor = 1,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['nearest-readings', sensorIds, targetTime, maxPerSensor],
+    queryFn: async () => {
+      const { data } = await api.post('/query/readings/nearest', {
+        sensorIds,
+        targetTime,
+        maxPerSensor,
+      });
+      return data as {
+        data: Array<{
+          sensor_id: string;
+          phenomenon_time: string;
+          processed_data: Record<string, unknown>;
+          quality_code: string;
+          distance_sec: number;
+        }>;
+        meta: { targetTime: string; sensorCount: number };
+      };
+    },
+    enabled: enabled && sensorIds.length > 0 && !!targetTime,
+  });
+}
+
 export function useClearAllReadings() {
   const qc = useQueryClient();
   return useMutation({

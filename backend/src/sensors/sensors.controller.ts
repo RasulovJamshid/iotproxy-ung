@@ -31,8 +31,8 @@ export class SensorsController {
     if (!organizationId) throw new UnauthorizedException();
     
     // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
     
     // API key siteId restriction takes precedence over query param
@@ -50,8 +50,8 @@ export class SensorsController {
   ) {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
     return this.service.findConflictSites(externalId, organizationId);
   }
@@ -66,8 +66,8 @@ export class SensorsController {
     if (!organizationId) throw new UnauthorizedException();
     
     // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
     
     return this.service.findOne(id, organizationId);
@@ -194,8 +194,8 @@ export class SensorsController {
     if (!organizationId) throw new UnauthorizedException();
     
     // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
     
     return this.service.getActiveConfig(id, organizationId);

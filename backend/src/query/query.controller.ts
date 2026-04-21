@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Delete, Param, Query, UseGuards,
+  Controller, Get, Post, Delete, Body, Param, Query, UseGuards,
   ParseUUIDPipe, UnauthorizedException, BadRequestException,
   HttpCode, HttpStatus,
 } from '@nestjs/common';
@@ -54,8 +54,8 @@ export class QueryController {
     // ── Auth ────────────────────────────────────────────────────────────────
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
 
     // ── Validate required timestamps ─────────────────────────────────────
@@ -137,8 +137,8 @@ export class QueryController {
     if (!organizationId) throw new UnauthorizedException();
     
     // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
     
     const effectiveSiteId = org?.siteId ?? siteId;
@@ -215,5 +215,139 @@ export class QueryController {
     
     const deletedCount = await this.timescale.clearAllReadings(sensorId, organizationId);
     return { deletedCount };
+  }
+
+  /**
+   * Advanced search: multi-sensor, time-range, exact-time, filtering, sorting,
+   * pagination, and field selection. Returns data + metadata with actual
+   * start/end boundaries.
+   */
+  @Post('readings/search')
+  async searchReadings(
+    @Body() body: {
+      sensorIds?: string[];
+      siteId?: string;
+      startTs?: string;
+      endTs?: string;
+      /** Exact clock time filter, e.g. "11:00" — returns only readings at that time of day */
+      exactTime?: string;
+      agg?: string;
+      intervalMs?: number;
+      aggField?: string;
+      sortBy?: 'time' | 'value' | 'sensor' | 'quality';
+      sortDir?: 'ASC' | 'DESC';
+      minQuality?: number;
+      limit?: number;
+      offset?: number;
+      /** Only return these keys from processed_data */
+      fields?: string[];
+    },
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
+    }
+
+    // Validate agg if provided
+    if (body.agg) {
+      const aggUpper = body.agg.toUpperCase();
+      if (!ALLOWED_AGG.has(aggUpper)) {
+        throw new BadRequestException(`Invalid agg "${body.agg}". Allowed: ${[...ALLOWED_AGG].join(', ')}`);
+      }
+      body.agg = aggUpper;
+    }
+
+    // Parse dates
+    let startTs: Date | undefined;
+    let endTs: Date | undefined;
+    if (body.startTs) {
+      startTs = new Date(body.startTs);
+      if (isNaN(startTs.getTime())) throw new BadRequestException(`Invalid startTs: "${body.startTs}"`);
+    }
+    if (body.endTs) {
+      endTs = new Date(body.endTs);
+      if (isNaN(endTs.getTime())) throw new BadRequestException(`Invalid endTs: "${body.endTs}"`);
+    }
+    if (startTs && endTs && startTs >= endTs) {
+      throw new BadRequestException('startTs must be before endTs');
+    }
+
+    // Validate exactTime format
+    if (body.exactTime && !/^\d{1,2}(:\d{2})?$/.test(body.exactTime)) {
+      throw new BadRequestException('exactTime must be HH or HH:MM format, e.g. "11" or "11:00"');
+    }
+
+    // Restrict to site if API key is scoped
+    const effectiveSiteId = org?.siteId ?? body.siteId;
+
+    // Validate sortBy
+    if (body.sortBy && !['time', 'value', 'sensor', 'quality'].includes(body.sortBy)) {
+      throw new BadRequestException('sortBy must be one of: time, value, sensor, quality');
+    }
+    if (body.sortDir && body.sortDir !== 'ASC' && body.sortDir !== 'DESC') {
+      throw new BadRequestException('sortDir must be ASC or DESC');
+    }
+
+    return this.timescale.advancedSearch({
+      organizationId,
+      sensorIds: body.sensorIds,
+      siteId: effectiveSiteId,
+      startTs,
+      endTs,
+      exactTime: body.exactTime,
+      agg: (body.agg as any) ?? 'NONE',
+      intervalMs: body.intervalMs,
+      aggField: body.aggField ?? 'value',
+      sortBy: body.sortBy,
+      sortDir: body.sortDir ?? 'DESC',
+      minQuality: body.minQuality,
+      limit: body.limit,
+      offset: body.offset,
+      fields: body.fields,
+    });
+  }
+
+  /**
+   * Find readings nearest to a specific timestamp.
+   * Useful for "what was the value at exactly 11:00 on April 20?"
+   */
+  @Post('readings/nearest')
+  async nearestReadings(
+    @Body() body: {
+      sensorIds: string[];
+      targetTime: string;
+      maxPerSensor?: number;
+    },
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
+    }
+
+    if (!body.sensorIds || body.sensorIds.length === 0) {
+      throw new BadRequestException('sensorIds is required and must not be empty');
+    }
+    if (!body.targetTime) {
+      throw new BadRequestException('targetTime is required (ISO 8601)');
+    }
+    const target = new Date(body.targetTime);
+    if (isNaN(target.getTime())) {
+      throw new BadRequestException(`Invalid targetTime: "${body.targetTime}"`);
+    }
+
+    const data = await this.timescale.nearestToTime(
+      organizationId,
+      target,
+      body.sensorIds,
+      Math.min(body.maxPerSensor ?? 1, 10),
+    );
+
+    return { data, meta: { targetTime: body.targetTime, sensorCount: body.sensorIds.length } };
   }
 }

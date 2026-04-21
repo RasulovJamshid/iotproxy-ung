@@ -130,6 +130,22 @@ export function useUpdateOrganization() {
   });
 }
 
+export function useUpdateOrgRetentionDefaults() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      defaultRawRetentionDays?: number | null;
+      defaultSummaryRetentionMonths?: number | null;
+      defaultSummaryAggMode?: string | null;
+    }) =>
+      api.patch(`/organizations/${user!.organizationId}/retention-defaults`, body).then((r) => r.data),
+    onSuccess: (updated) => {
+      qc.setQueryData(['organization', user!.organizationId], updated);
+    },
+  });
+}
+
 /** SYSTEM_ADMIN: update ANY org by id */
 export function useUpdateOrganizationById() {
   const qc = useQueryClient();

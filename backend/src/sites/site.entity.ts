@@ -73,6 +73,16 @@ export class Site {
   @Column({ name: 'custom_fields', type: 'jsonb', nullable: true })
   customFields?: Record<string, unknown>; // Customer-specific fields
 
+  // Data retention defaults (sensor → site → org fallback chain)
+  @Column({ name: 'default_raw_retention_days', nullable: true, type: 'int' })
+  defaultRawRetentionDays?: number;
+
+  @Column({ name: 'default_summary_retention_months', nullable: true, type: 'int' })
+  defaultSummaryRetentionMonths?: number;
+
+  @Column({ name: 'default_summary_agg_mode', nullable: true, type: 'varchar', length: 10 })
+  defaultSummaryAggMode?: string;
+
   @OneToMany(() => Sensor, (s) => s.site)
   sensors!: Sensor[];
 

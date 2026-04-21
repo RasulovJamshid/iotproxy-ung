@@ -388,12 +388,13 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     const result = await this.pool.query(
       `SELECT DISTINCT s.id AS sensor_id,
               COALESCE(s.agg_field, 'value') AS agg_field,
-              (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, $2))) AS cutoff_date
+              (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, si.default_raw_retention_days, $2))) AS cutoff_date
        FROM sensors s
+       JOIN sites si ON si.id = s.site_id
        JOIN sensor_readings sr ON sr.sensor_id = s.id
        WHERE s.organization_id = $1
          AND s.deleted_at IS NULL
-         AND sr.phenomenon_time < (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, $2)))
+         AND sr.phenomenon_time < (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, si.default_raw_retention_days, $2)))
        LIMIT 10000`,
       [organizationId, defaultRawRetentionDays],
     );
@@ -415,6 +416,245 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
       [sensorId, cutoffDate],
     );
     return result.rowCount ?? 0;
+  }
+
+  // ── Advanced search ─────────────────────────────────────────────────────────
+
+  /**
+   * Multi-sensor search with exact time, range, filtering, sorting, and
+   * response metadata (actual data boundaries).
+   */
+  async advancedSearch(params: {
+    organizationId: string;
+    sensorIds?: string[];
+    siteId?: string;
+    startTs?: Date;
+    endTs?: Date;
+    /** Snap results to exact clock time, e.g. "11:00" every day in range */
+    exactTime?: string;
+    agg?: 'AVG' | 'MIN' | 'MAX' | 'SUM' | 'COUNT' | 'NONE';
+    intervalMs?: number;
+    aggField?: string;
+    sortBy?: 'time' | 'value' | 'sensor' | 'quality';
+    sortDir?: 'ASC' | 'DESC';
+    minQuality?: number;
+    limit?: number;
+    offset?: number;
+    fields?: string[];
+  }) {
+    const dir = params.sortDir ?? 'DESC';
+    const lim = Math.min(params.limit ?? 500, 10_000);
+    const off = params.offset ?? 0;
+    const agg = params.agg ?? 'NONE';
+
+    const args: unknown[] = [params.organizationId];
+    const conditions: string[] = ['sr.organization_id = $1'];
+
+    // ── Sensor / site filter ───────────────────────────────────────────
+    if (params.sensorIds && params.sensorIds.length > 0) {
+      args.push(params.sensorIds);
+      conditions.push(`sr.sensor_id = ANY($${args.length})`);
+    }
+    if (params.siteId) {
+      args.push(params.siteId);
+      conditions.push(`sr.site_id = $${args.length}`);
+    }
+
+    // ── Time range ─────────────────────────────────────────────────────
+    if (params.startTs) {
+      args.push(params.startTs);
+      conditions.push(`sr.phenomenon_time >= $${args.length}`);
+    }
+    if (params.endTs) {
+      args.push(params.endTs);
+      conditions.push(`sr.phenomenon_time <= $${args.length}`);
+    }
+
+    // ── Exact clock time filter (e.g. "11:00") ────────────────────────
+    if (params.exactTime) {
+      const [hh, mm] = params.exactTime.split(':').map(Number);
+      if (!isNaN(hh)) {
+        args.push(hh);
+        conditions.push(`EXTRACT(HOUR FROM sr.phenomenon_time) = $${args.length}`);
+        if (!isNaN(mm)) {
+          args.push(mm);
+          conditions.push(`EXTRACT(MINUTE FROM sr.phenomenon_time) = $${args.length}`);
+        }
+      }
+    }
+
+    // ── Quality filter ─────────────────────────────────────────────────
+    if (params.minQuality !== undefined) {
+      args.push(params.minQuality);
+      conditions.push(`sr.quality_code >= $${args.length}`);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // ── Determine sort expression ──────────────────────────────────────
+    let orderExpr: string;
+    switch (params.sortBy) {
+      case 'value':
+        orderExpr = params.aggField
+          ? `(sr.processed_data->>'${params.aggField.replace(/'/g, "''")}')::double precision ${dir} NULLS LAST`
+          : `sr.phenomenon_time ${dir}`;
+        break;
+      case 'sensor':
+        orderExpr = `sr.sensor_id ${dir}, sr.phenomenon_time DESC`;
+        break;
+      case 'quality':
+        orderExpr = `sr.quality_code ${dir}, sr.phenomenon_time DESC`;
+        break;
+      default:
+        orderExpr = `sr.phenomenon_time ${dir}`;
+    }
+
+    // ── Raw (non-aggregated) path ──────────────────────────────────────
+    if (agg === 'NONE') {
+      // Select specific fields from processed_data if requested
+      let fieldsSelect = 'sr.processed_data';
+      if (params.fields && params.fields.length > 0) {
+        const picks = params.fields
+          .map((f) => `'${f.replace(/'/g, "''")}'`)
+          .join(', ');
+        fieldsSelect = `jsonb_strip_nulls(
+          jsonb_build_object(${params.fields
+            .map((f) => `'${f.replace(/'/g, "''")}', sr.processed_data->'${f.replace(/'/g, "''")}'`)
+            .join(', ')})
+        ) AS processed_data`;
+      }
+
+      // Count total matching rows
+      const countResult = await this.pool.query(
+        `SELECT COUNT(*)::int AS total FROM sensor_readings sr WHERE ${whereClause}`,
+        args,
+      );
+      const total = countResult.rows[0]?.total ?? 0;
+
+      // Fetch page
+      args.push(lim, off);
+      const result = await this.pool.query(
+        `SELECT sr.sensor_id, sr.phenomenon_time, ${fieldsSelect},
+                sr.quality_code, sr.pipeline_flags
+         FROM sensor_readings sr
+         WHERE ${whereClause}
+         ORDER BY ${orderExpr}
+         LIMIT $${args.length - 1} OFFSET $${args.length}`,
+        args,
+      );
+
+      // Data boundaries
+      const dataStart = result.rows.length > 0
+        ? result.rows.reduce((a: any, b: any) =>
+            new Date(a.phenomenon_time) < new Date(b.phenomenon_time) ? a : b
+          ).phenomenon_time
+        : null;
+      const dataEnd = result.rows.length > 0
+        ? result.rows.reduce((a: any, b: any) =>
+            new Date(a.phenomenon_time) > new Date(b.phenomenon_time) ? a : b
+          ).phenomenon_time
+        : null;
+
+      return {
+        data: result.rows,
+        meta: {
+          total,
+          limit: lim,
+          offset: off,
+          returned: result.rows.length,
+          dataStart,
+          dataEnd,
+        },
+      };
+    }
+
+    // ── Aggregated path ────────────────────────────────────────────────
+    const intervalSec = Math.floor((params.intervalMs ?? 3_600_000) / 1000);
+    const aggFieldSafe = params.aggField ?? 'value';
+
+    args.push(`${intervalSec} seconds`);
+    const intervalParam = `$${args.length}`;
+    args.push(aggFieldSafe);
+    const fieldParam = `$${args.length}`;
+
+    const numericFilter = `AND (sr.processed_data->>${fieldParam}) ~ '^-?[0-9]+(\\.[0-9]+)?$'`;
+
+    // Count distinct buckets
+    const countResult = await this.pool.query(
+      `SELECT COUNT(DISTINCT time_bucket(${intervalParam}::interval, sr.phenomenon_time))::int AS total
+       FROM sensor_readings sr
+       WHERE ${whereClause} ${numericFilter}`,
+      args,
+    );
+    const total = countResult.rows[0]?.total ?? 0;
+
+    args.push(lim, off);
+    const result = await this.pool.query(
+      `SELECT time_bucket(${intervalParam}::interval, sr.phenomenon_time) AS bucket,
+              sr.sensor_id,
+              AVG((sr.processed_data->>${fieldParam})::double precision)  AS avg_val,
+              MIN((sr.processed_data->>${fieldParam})::double precision)  AS min_val,
+              MAX((sr.processed_data->>${fieldParam})::double precision)  AS max_val,
+              SUM((sr.processed_data->>${fieldParam})::double precision)  AS sum_val,
+              COUNT(*)::int AS sample_count
+       FROM sensor_readings sr
+       WHERE ${whereClause} ${numericFilter}
+       GROUP BY 1, sr.sensor_id
+       ORDER BY 1 ${dir}, sr.sensor_id
+       LIMIT $${args.length - 1} OFFSET $${args.length}`,
+      args,
+    );
+
+    const dataStart = result.rows.length > 0 ? result.rows[0].bucket : null;
+    const dataEnd = result.rows.length > 0 ? result.rows[result.rows.length - 1].bucket : null;
+
+    return {
+      data: result.rows,
+      meta: {
+        total,
+        limit: lim,
+        offset: off,
+        returned: result.rows.length,
+        dataStart: dir === 'ASC' ? dataStart : dataEnd,
+        dataEnd: dir === 'ASC' ? dataEnd : dataStart,
+      },
+    };
+  }
+
+  /**
+   * Find the reading(s) nearest to a specific timestamp for one or more sensors.
+   * Returns at most `maxPerSensor` readings per sensor (before + after the target).
+   */
+  async nearestToTime(
+    organizationId: string,
+    targetTime: Date,
+    sensorIds: string[],
+    maxPerSensor = 1,
+  ) {
+    if (sensorIds.length === 0) return [];
+
+    const results: unknown[] = [];
+    for (const sensorId of sensorIds) {
+      const result = await this.pool.query(
+        `(SELECT sensor_id, phenomenon_time, processed_data, quality_code,
+                 ABS(EXTRACT(EPOCH FROM (phenomenon_time - $2))) AS distance_sec
+          FROM sensor_readings
+          WHERE sensor_id = $1 AND organization_id = $3 AND phenomenon_time <= $2
+          ORDER BY phenomenon_time DESC LIMIT $4)
+         UNION ALL
+         (SELECT sensor_id, phenomenon_time, processed_data, quality_code,
+                 ABS(EXTRACT(EPOCH FROM (phenomenon_time - $2))) AS distance_sec
+          FROM sensor_readings
+          WHERE sensor_id = $1 AND organization_id = $3 AND phenomenon_time > $2
+          ORDER BY phenomenon_time ASC LIMIT $4)
+         ORDER BY distance_sec
+         LIMIT $4`,
+        [sensorId, targetTime, organizationId, maxPerSensor],
+      );
+      results.push(...result.rows);
+    }
+
+    return results;
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────

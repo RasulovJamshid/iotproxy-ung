@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query, UseGuards, UnauthorizedException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiSecurity, ApiQuery } from '@nestjs/swagger';
 import { FlexibleAuthGuard } from '../auth/guards/flexible-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -20,6 +20,14 @@ export class SitesController {
   constructor(private service: SitesService) {}
 
   @Get()
+  @ApiQuery({ name: 'orgId', required: false, description: 'Organization ID (SYSTEM_ADMIN only)' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 50, max: 500)' })
+  @ApiQuery({ 
+    name: 'groupId', 
+    required: false, 
+    description: 'Filter by site group. Use "none" for ungrouped sites, a UUID for a specific group, or omit to get all sites.' 
+  })
   async findAll(
     @Query('orgId') orgIdParam?: string,
     @Query('page') page?: string,
@@ -36,9 +44,9 @@ export class SitesController {
       organizationId = orgIdParam;
     }
 
-    // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    // API key must have 'query' or 'admin' permission
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
 
     // API key scoped to a single site — return only that site
@@ -65,9 +73,9 @@ export class SitesController {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
     
-    // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => [PERMISSIONS.QUERY, PERMISSIONS.ADMIN, 'read'].includes(p))) {
-      throw new UnauthorizedException('API key lacks read permission');
+    // API key must have 'query' or 'admin' permission
+    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+      throw new UnauthorizedException('API key lacks query permission');
     }
     
     return this.service.findOne(id, organizationId);

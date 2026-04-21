@@ -63,7 +63,16 @@ export function useTransitionSite() {
 export function useUpdateSite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; description?: string; discoveryEnabled?: boolean; groupId?: string | null }) =>
+    mutationFn: ({ id, ...body }: {
+      id: string;
+      name?: string;
+      description?: string;
+      discoveryEnabled?: boolean;
+      groupId?: string | null;
+      defaultRawRetentionDays?: number | null;
+      defaultSummaryRetentionMonths?: number | null;
+      defaultSummaryAggMode?: string | null;
+    }) =>
       api.patch(`/sites/${id}`, body).then((r) => r.data),
     onSuccess: (updated, { id }) => {
       qc.setQueryData(['sites', id], updated);
