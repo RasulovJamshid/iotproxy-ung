@@ -108,17 +108,21 @@ export class ReadingsWorker extends WorkerHost implements OnModuleDestroy {
     try {
       await this.timescale.batchInsert(batch);
 
-      // Enforce per-sensor record limits
+      // NOTE: Per-sensor record limits (maxRecordsPerSensor) have been replaced
+      // by time-based retention (rawRetentionDays). Nightly RollupService at 01:00
+      // materialises daily summaries, then RetentionService at 02:00 purges old raw data.
+      // Legacy maxRecordsPerSensor is still honoured for backward compat if set.
       const sensorIds = [...new Set(batch.map((r) => r.sensorId))];
       const limitedSensors = await this.sensors.find({
         where: { id: In(sensorIds) },
         select: ['id', 'maxRecordsPerSensor'],
       });
-      await Promise.all(
-        limitedSensors
-          .filter((s) => s.maxRecordsPerSensor != null)
-          .map((s) => this.timescale.enforceRecordLimit(s.id, s.maxRecordsPerSensor!)),
-      );
+      const legacySensors = limitedSensors.filter((s) => s.maxRecordsPerSensor != null);
+      if (legacySensors.length > 0) {
+        await Promise.all(
+          legacySensors.map((s) => this.timescale.enforceRecordLimit(s.id, s.maxRecordsPerSensor!)),
+        );
+      }
 
       for (const reading of batch) {
         this.gateway.emit(reading.siteId, {

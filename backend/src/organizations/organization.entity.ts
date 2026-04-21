@@ -21,6 +21,15 @@ export class Organization {
   @Column({ name: 'raw_retention_days', nullable: true, type: 'int' })
   rawRetentionDays?: number;
 
+  @Column({ name: 'default_raw_retention_days', nullable: true, type: 'int', default: 7 })
+  defaultRawRetentionDays?: number;
+
+  @Column({ name: 'default_summary_retention_months', nullable: true, type: 'int', default: 6 })
+  defaultSummaryRetentionMonths?: number;
+
+  @Column({ name: 'default_summary_agg_mode', nullable: true, type: 'varchar', length: 10, default: 'AVG' })
+  defaultSummaryAggMode?: string;
+
   @Column({ name: 'is_active', default: true })
   isActive!: boolean;
 

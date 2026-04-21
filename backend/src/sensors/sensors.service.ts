@@ -66,7 +66,7 @@ export class SensorsService {
     return this.findOne(id, organizationId);
   }
 
-  async update(id: string, organizationId: string, data: Partial<Pick<Sensor, 'name' | 'description' | 'externalId' | 'typeId' | 'categoryId' | 'reportingIntervalSeconds' | 'maxRecordsPerSensor'>>) {
+  async update(id: string, organizationId: string, data: Partial<Pick<Sensor, 'name' | 'description' | 'externalId' | 'typeId' | 'categoryId' | 'reportingIntervalSeconds' | 'maxRecordsPerSensor' | 'rawRetentionDays' | 'summaryRetentionMonths' | 'summaryAggMode' | 'aggField'>>) {
     await this.findOne(id, organizationId);
     await this.sensors.update(id, data);
     return this.findOne(id, organizationId);

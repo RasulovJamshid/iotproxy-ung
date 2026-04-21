@@ -63,6 +63,10 @@ export default function SensorDetailPage() {
   const [categoryIdDraft, setCategoryIdDraft] = useState('');
   const [intervalDraft, setIntervalDraft] = useState('');
   const [maxRecordsDraft, setMaxRecordsDraft] = useState('');
+  const [rawRetentionDraft, setRawRetentionDraft] = useState('');
+  const [summaryRetentionDraft, setSummaryRetentionDraft] = useState('');
+  const [summaryAggModeDraft, setSummaryAggModeDraft] = useState('');
+  const [aggFieldDraft, setAggFieldDraft] = useState('');
   const { data: sensorTypes } = useSensorTypes();
   const { data: sensorCategories } = useSensorCategories();
   const { data: sensorConfig } = useSensorConfig(id);
@@ -147,6 +151,10 @@ export default function SensorDetailPage() {
                     categoryId: categoryIdDraft || undefined,
                     reportingIntervalSeconds: intervalDraft ? Number(intervalDraft) : undefined,
                     maxRecordsPerSensor: maxRecordsDraft ? Number(maxRecordsDraft) : null,
+                    rawRetentionDays: rawRetentionDraft ? Number(rawRetentionDraft) : null,
+                    summaryRetentionMonths: summaryRetentionDraft ? Number(summaryRetentionDraft) : null,
+                    summaryAggMode: summaryAggModeDraft || null,
+                    aggField: aggFieldDraft || undefined,
                   });
                   setEditingInfo(false);
                 }}
@@ -207,7 +215,55 @@ export default function SensorDetailPage() {
                     onChange={(e) => setMaxRecordsDraft(e.target.value)}
                     placeholder="e.g. 10"
                   />
-                  <span className="text-xs text-slate-400 dark:text-slate-500">max records (blank = no limit)</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">max records (legacy, blank = disabled)</span>
+                </div>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 pt-2">Data Retention</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    className="input text-sm py-1 w-40"
+                    value={rawRetentionDraft}
+                    onChange={(e) => setRawRetentionDraft(e.target.value)}
+                  >
+                    <option value="">Raw: org default</option>
+                    <option value="1">1 day</option>
+                    <option value="7">7 days</option>
+                    <option value="30">30 days</option>
+                    <option value="90">90 days</option>
+                    <option value="365">1 year</option>
+                    <option value="0">Unlimited</option>
+                  </select>
+                  <select
+                    className="input text-sm py-1 w-44"
+                    value={summaryRetentionDraft}
+                    onChange={(e) => setSummaryRetentionDraft(e.target.value)}
+                  >
+                    <option value="">Summary: org default</option>
+                    <option value="1">1 month</option>
+                    <option value="3">3 months</option>
+                    <option value="6">6 months</option>
+                    <option value="12">1 year</option>
+                    <option value="0">Unlimited</option>
+                  </select>
+                  <select
+                    className="input text-sm py-1 w-36"
+                    value={summaryAggModeDraft}
+                    onChange={(e) => setSummaryAggModeDraft(e.target.value)}
+                  >
+                    <option value="">Agg: org default</option>
+                    <option value="AVG">Average</option>
+                    <option value="MIN">Minimum</option>
+                    <option value="MAX">Maximum</option>
+                    <option value="LATEST">Latest</option>
+                    <option value="SUM">Sum</option>
+                    <option value="MIN_MAX">Min &amp; Max</option>
+                  </select>
+                  <input
+                    className="input text-sm py-1 w-28"
+                    value={aggFieldDraft}
+                    onChange={(e) => setAggFieldDraft(e.target.value)}
+                    placeholder="value"
+                  />
+                  <span className="text-xs text-slate-400 dark:text-slate-500">agg field</span>
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button type="submit" disabled={updateSensor.isPending} className="btn-primary py-1 text-xs">Save</button>
@@ -225,7 +281,7 @@ export default function SensorDetailPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => { setNameDraft(sensor.name); setDescDraft(sensor.description ?? ''); setTypeIdDraft(sensor.typeId ?? ''); setCategoryIdDraft(sensor.categoryId ?? ''); setIntervalDraft(String(sensor.reportingIntervalSeconds ?? '')); setMaxRecordsDraft(sensor.maxRecordsPerSensor != null ? String(sensor.maxRecordsPerSensor) : ''); setEditingInfo(true); }}
+                  onClick={() => { setNameDraft(sensor.name); setDescDraft(sensor.description ?? ''); setTypeIdDraft(sensor.typeId ?? ''); setCategoryIdDraft(sensor.categoryId ?? ''); setIntervalDraft(String(sensor.reportingIntervalSeconds ?? '')); setMaxRecordsDraft(sensor.maxRecordsPerSensor != null ? String(sensor.maxRecordsPerSensor) : ''); setRawRetentionDraft(sensor.rawRetentionDays != null ? String(sensor.rawRetentionDays) : ''); setSummaryRetentionDraft(sensor.summaryRetentionMonths != null ? String(sensor.summaryRetentionMonths) : ''); setSummaryAggModeDraft(sensor.summaryAggMode ?? ''); setAggFieldDraft(sensor.aggField ?? ''); setEditingInfo(true); }}
                   className="mt-1 text-xs text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   edit
@@ -310,6 +366,10 @@ export default function SensorDetailPage() {
             { label: 'Last Reading', value: sensor.lastReadingAt ? formatDistanceToNow(new Date(sensor.lastReadingAt), { addSuffix: true }) : '—' },
             { label: 'Reporting Interval', value: sensor.reportingIntervalSeconds ? `${sensor.reportingIntervalSeconds}s` : '—' },
             { label: 'Record Limit', value: sensor.maxRecordsPerSensor != null ? `${sensor.maxRecordsPerSensor} records` : 'No limit' },
+            { label: 'Raw Retention', value: sensor.rawRetentionDays != null ? (sensor.rawRetentionDays === 0 ? 'Unlimited' : `${sensor.rawRetentionDays} days`) : 'Org default' },
+            { label: 'Summary Retention', value: sensor.summaryRetentionMonths != null ? (sensor.summaryRetentionMonths === 0 ? 'Unlimited' : `${sensor.summaryRetentionMonths} months`) : 'Org default' },
+            { label: 'Summary Mode', value: sensor.summaryAggMode ?? 'Org default' },
+            { label: 'Agg Field', value: sensor.aggField || 'value' },
             { label: 'ID', value: <span className="font-mono text-xs">{sensor.id}</span> },
           ].map(({ label, value }) => (
             <div key={label}>

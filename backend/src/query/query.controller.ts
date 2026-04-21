@@ -115,7 +115,8 @@ export class QueryController {
       cursor:      parsedCursor,
       sortDir:     (sortDir as 'ASC' | 'DESC') ?? 'DESC',
       minQuality:  parsedMinQuality,
-      aggField:    aggField || undefined,
+      aggField:    aggField || sensor.aggField || 'value',
+      rawRetentionDays: sensor.rawRetentionDays ?? undefined,
     });
   }
 

@@ -98,7 +98,7 @@ export class SensorsController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { name?: string; description?: string; externalId?: string; typeId?: string; categoryId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null },
+    @Body() body: { name?: string; description?: string; externalId?: string; typeId?: string; categoryId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null; rawRetentionDays?: number | null; summaryRetentionMonths?: number | null; summaryAggMode?: string | null; aggField?: string },
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
   ) {

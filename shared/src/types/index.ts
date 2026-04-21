@@ -78,6 +78,8 @@ export type AlertOperator = 'GT' | 'LT' | 'GTE' | 'LTE' | 'EQ' | 'NEQ';
 
 export type AlertState = 'INACTIVE' | 'FIRING' | 'RESOLVED';
 
+export type SummaryAggMode = 'AVG' | 'MIN' | 'MAX' | 'LATEST' | 'SUM' | 'MIN_MAX';
+
 export type ExportFormat = 'csv' | 'parquet';
 
 export type ExportStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';

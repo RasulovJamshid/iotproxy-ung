@@ -42,7 +42,7 @@ export function useCreateSensor() {
 export function useUpdateSensor() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; externalId?: string; typeId?: string; categoryId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null }) =>
+    mutationFn: ({ id, ...data }: { id: string; name?: string; description?: string; externalId?: string; typeId?: string; categoryId?: string; reportingIntervalSeconds?: number; maxRecordsPerSensor?: number | null; rawRetentionDays?: number | null; summaryRetentionMonths?: number | null; summaryAggMode?: string | null; aggField?: string }) =>
       api.patch(`/sensors/${id}`, data).then((r) => r.data),
     onSuccess: (updated, { id }) => {
       qc.setQueryData(['sensors', 'detail', id], updated);

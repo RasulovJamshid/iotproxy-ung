@@ -124,13 +124,28 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
   // ── Reads ───────────────────────────────────────────────────────────────────
 
-  async queryTimeSeries(params: TimeSeriesQueryParams) {
+  async queryTimeSeries(params: TimeSeriesQueryParams & { rawRetentionDays?: number }) {
     const rangeMs = params.endTs.getTime() - params.startTs.getTime();
     const now = Date.now();
     const oneHourAgo = now - 3_600_000;
     const oneDayAgo  = now - 86_400_000;
     const sixHours   = 6 * 3_600_000;
     const sevenDays  = 7 * 86_400_000;
+
+    // If the entire requested range is older than the raw retention cutoff,
+    // serve from daily summaries (raw data may have been purged).
+    if (params.rawRetentionDays && params.rawRetentionDays > 0) {
+      const cutoffMs = now - params.rawRetentionDays * 86_400_000;
+      if (params.endTs.getTime() < cutoffMs) {
+        return this.queryDailySummary(
+          params.sensorId,
+          params.startTs,
+          params.endTs,
+          params.sortDir ?? 'ASC',
+          params.limit,
+        );
+      }
+    }
 
     if (params.agg === 'NONE') {
       return this.queryRaw(params);
@@ -273,6 +288,131 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
        WHERE sensor_id = $1
          AND organization_id = $2`,
       [sensorId, organizationId],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  // ── Daily summary rollup ─────────────────────────────────────────────────────
+
+  /**
+   * Materialise daily summaries for a sensor for all dates that have raw
+   * readings but no existing summary row yet.
+   *
+   * @param aggField – JSONB key inside processed_data holding the numeric value
+   * @param cutoffDate – only roll up days strictly before this date (today is excluded)
+   */
+  async rollupDailySummary(
+    sensorId: string,
+    organizationId: string,
+    aggField: string,
+    cutoffDate: Date,
+  ): Promise<number> {
+    const result = await this.pool.query(
+      `INSERT INTO readings_daily_summary
+         (sensor_id, organization_id, day, avg_val, min_val, max_val, latest_val, sum_val, sample_count, agg_field)
+       SELECT
+         $1,
+         $2,
+         date_trunc('day', phenomenon_time)::date AS day,
+         AVG((processed_data->>$3)::double precision)   AS avg_val,
+         MIN((processed_data->>$3)::double precision)   AS min_val,
+         MAX((processed_data->>$3)::double precision)   AS max_val,
+         (array_agg((processed_data->>$3)::double precision ORDER BY phenomenon_time DESC))[1] AS latest_val,
+         SUM((processed_data->>$3)::double precision)   AS sum_val,
+         COUNT(*)::int                                   AS sample_count,
+         $3
+       FROM sensor_readings
+       WHERE sensor_id = $1
+         AND organization_id = $2
+         AND phenomenon_time < $4
+         AND (processed_data->>$3) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+       GROUP BY date_trunc('day', phenomenon_time)::date
+       ON CONFLICT (sensor_id, day) DO UPDATE SET
+         avg_val      = EXCLUDED.avg_val,
+         min_val      = EXCLUDED.min_val,
+         max_val      = EXCLUDED.max_val,
+         latest_val   = EXCLUDED.latest_val,
+         sum_val      = EXCLUDED.sum_val,
+         sample_count = EXCLUDED.sample_count,
+         agg_field    = EXCLUDED.agg_field,
+         created_at   = NOW()`,
+      [sensorId, organizationId, aggField, cutoffDate],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  /**
+   * Query daily summaries for a sensor in a date range.
+   */
+  async queryDailySummary(
+    sensorId: string,
+    startDate: Date,
+    endDate: Date,
+    sortDir: 'ASC' | 'DESC' = 'ASC',
+    limit = 1000,
+  ) {
+    const result = await this.pool.query(
+      `SELECT day AS bucket, avg_val, min_val, max_val, latest_val, sum_val, sample_count
+       FROM readings_daily_summary
+       WHERE sensor_id = $1
+         AND day >= $2
+         AND day <= $3
+       ORDER BY day ${sortDir === 'DESC' ? 'DESC' : 'ASC'}
+       LIMIT $4`,
+      [sensorId, startDate, endDate, Math.min(limit, 10_000)],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Purge daily summaries older than a given number of months for an org.
+   */
+  async purgeSummariesOlderThan(organizationId: string, months: number): Promise<number> {
+    const result = await this.pool.query(
+      `DELETE FROM readings_daily_summary
+       WHERE organization_id = $1
+         AND day < (CURRENT_DATE - make_interval(months => $2))`,
+      [organizationId, months],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  /**
+   * Get all sensor IDs that have raw readings older than their retention cutoff
+   * (i.e. readings that need to be rolled up before deletion).
+   */
+  async getSensorsNeedingRollup(
+    organizationId: string,
+    defaultRawRetentionDays: number,
+  ): Promise<Array<{ sensorId: string; aggField: string; cutoffDate: Date }>> {
+    const result = await this.pool.query(
+      `SELECT DISTINCT s.id AS sensor_id,
+              COALESCE(s.agg_field, 'value') AS agg_field,
+              (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, $2))) AS cutoff_date
+       FROM sensors s
+       JOIN sensor_readings sr ON sr.sensor_id = s.id
+       WHERE s.organization_id = $1
+         AND s.deleted_at IS NULL
+         AND sr.phenomenon_time < (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, $2)))
+       LIMIT 10000`,
+      [organizationId, defaultRawRetentionDays],
+    );
+    return result.rows.map((r: any) => ({
+      sensorId: r.sensor_id,
+      aggField: r.agg_field,
+      cutoffDate: new Date(r.cutoff_date),
+    }));
+  }
+
+  /**
+   * Delete raw readings older than the per-sensor retention cutoff.
+   */
+  async deleteRawOlderThanPerSensor(sensorId: string, cutoffDate: Date): Promise<number> {
+    const result = await this.pool.query(
+      `DELETE FROM sensor_readings
+       WHERE sensor_id = $1
+         AND phenomenon_time < $2`,
+      [sensorId, cutoffDate],
     );
     return result.rowCount ?? 0;
   }

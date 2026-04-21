@@ -61,6 +61,18 @@ export class Sensor {
   @Column({ name: 'max_records_per_sensor', nullable: true, type: 'int', default: 10 })
   maxRecordsPerSensor?: number | null;
 
+  @Column({ name: 'raw_retention_days', nullable: true, type: 'int' })
+  rawRetentionDays?: number | null;
+
+  @Column({ name: 'summary_retention_months', nullable: true, type: 'int' })
+  summaryRetentionMonths?: number | null;
+
+  @Column({ name: 'summary_agg_mode', nullable: true, type: 'varchar', length: 10 })
+  summaryAggMode?: string | null;
+
+  @Column({ name: 'agg_field', nullable: true, type: 'varchar', length: 100, default: 'value' })
+  aggField?: string;
+
   @OneToMany(() => SensorConfig, (c) => c.sensor)
   configs!: SensorConfig[];
 

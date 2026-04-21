@@ -12,6 +12,9 @@ export interface Organization {
   slug: string;
   rateLimitRpm: number;
   rawRetentionDays?: number;
+  defaultRawRetentionDays?: number;
+  defaultSummaryRetentionMonths?: number;
+  defaultSummaryAggMode?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -92,6 +95,10 @@ export interface Sensor {
   lastReadingAt?: string;
   reportingIntervalSeconds?: number;
   maxRecordsPerSensor?: number | null;
+  rawRetentionDays?: number | null;
+  summaryRetentionMonths?: number | null;
+  summaryAggMode?: string | null;
+  aggField?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -175,4 +182,7 @@ export interface Reading {
   avg_val: number;
   min_val: number;
   max_val: number;
+  latest_val?: number;
+  sum_val?: number;
+  sample_count?: number;
 }
