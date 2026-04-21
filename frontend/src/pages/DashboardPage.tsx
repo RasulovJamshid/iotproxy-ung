@@ -121,6 +121,25 @@ export default function DashboardPage() {
   const openAlerts = eventList.filter((e) => e.state === 'FIRING').length;
   const healthLabel = openAlerts > 0 ? 'Needs attention' : 'Healthy';
 
+  // --- Additional KPI Metrics ---
+  const offlineSites = siteList.filter((s) => s.connectivityStatus !== 'ONLINE').length;
+
+  const now = Date.now();
+  const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+  const staleSensors = sensorList.filter((s) => {
+    if (!s.lastReadingAt) return s.connectivityStatus === 'ONLINE'; // online but never reported
+    const age = now - new Date(s.lastReadingAt).getTime();
+    const expected = s.reportingIntervalSeconds ? s.reportingIntervalSeconds * 1000 * 3 : STALE_THRESHOLD_MS;
+    return age > expected;
+  }).length;
+
+  const siteIdsWithSensors = new Set(sensorList.map((s) => s.siteId));
+  const unmonitoredSites = siteList.filter((s) => !siteIdsWithSensors.has(s.id)).length;
+
+  const avgSensorsPerSite = siteList.length > 0
+    ? (sensorList.length / siteList.length).toFixed(1)
+    : '0';
+
   // --- Chart Data Preparation ---
   // Site Status Data
   const siteStatusCounts = siteList.reduce((acc, site) => {
@@ -221,6 +240,43 @@ export default function DashboardPage() {
           to="/alerts"
           accent="bg-gradient-to-b from-amber-400 to-amber-600"
           icon={<Icon d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />}
+        />
+      </div>
+
+      {/* Operational KPI Row */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          delayClass="stagger-5"
+          label="Offline Sites"
+          value={offlineSites}
+          sub={offlineSites === 0 ? 'All sites connected' : `${offlineSites} of ${siteList.length} unreachable`}
+          accent={offlineSites > 0 ? 'bg-gradient-to-b from-red-400 to-red-600' : 'bg-gradient-to-b from-emerald-400 to-emerald-600'}
+          icon={<Icon d="M18.364 5.636a9 9 0 11-12.728 0M12 9v4m0 4h.01" />}
+        />
+        <StatCard
+          delayClass="stagger-5"
+          label="Stale Sensors"
+          value={staleSensors}
+          sub={staleSensors === 0 ? 'All sensors reporting on time' : `${staleSensors} missed reporting window`}
+          accent={staleSensors > 0 ? 'bg-gradient-to-b from-amber-400 to-amber-600' : 'bg-gradient-to-b from-emerald-400 to-emerald-600'}
+          icon={<Icon d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />}
+        />
+        <StatCard
+          delayClass="stagger-5"
+          label="Avg Sensors / Site"
+          value={avgSensorsPerSite}
+          sub={`${sensorList.length} sensors across ${siteList.length} sites`}
+          accent="bg-gradient-to-b from-cyan-400 to-cyan-600"
+          icon={<Icon d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 8a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zm12 0a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />}
+        />
+        <StatCard
+          delayClass="stagger-5"
+          label="Unmonitored Sites"
+          value={unmonitoredSites}
+          sub={unmonitoredSites === 0 ? 'All sites have sensors' : `${unmonitoredSites} sites with no sensors`}
+          to="/sites"
+          accent={unmonitoredSites > 0 ? 'bg-gradient-to-b from-orange-400 to-orange-600' : 'bg-gradient-to-b from-emerald-400 to-emerald-600'}
+          icon={<Icon d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />}
         />
       </div>
 

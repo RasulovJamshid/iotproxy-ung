@@ -9,6 +9,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CurrentOrg } from '../auth/decorators/current-org.decorator';
 import { AuthUser, OrgContext } from '../auth/interfaces/auth-user.interface';
 import { PERMISSIONS } from '@iotproxy/shared';
+import { canRead, canQuery } from '../auth/permission.helpers';
 import { TimescaleRepository, ALLOWED_AGG } from '../database/timescale.repository';
 import { SensorsService } from '../sensors/sensors.service';
 
@@ -54,7 +55,7 @@ export class QueryController {
     // ── Auth ────────────────────────────────────────────────────────────────
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+    if (org && !canQuery(org)) {
       throw new UnauthorizedException('API key lacks query permission');
     }
 
@@ -136,9 +137,8 @@ export class QueryController {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
     
-    // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
-      throw new UnauthorizedException('API key lacks query permission');
+    if (org && !canRead(org)) {
+      throw new UnauthorizedException('API key lacks read permission');
     }
     
     const effectiveSiteId = org?.siteId ?? siteId;
@@ -247,7 +247,7 @@ export class QueryController {
   ) {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+    if (org && !canQuery(org)) {
       throw new UnauthorizedException('API key lacks query permission');
     }
 
@@ -326,7 +326,7 @@ export class QueryController {
   ) {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
+    if (org && !canQuery(org)) {
       throw new UnauthorizedException('API key lacks query permission');
     }
 

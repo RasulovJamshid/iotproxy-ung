@@ -70,9 +70,13 @@ export function ReadingsExplorer({ sensorIds: defaultSensorIds, siteId: defaultS
   const hasRange = !!(startDate || endDate || exactTime);
   const { data: result, isLoading, isFetching } = useSearchReadings(searchParams, hasRange && !nearestMode);
 
-  // Nearest mode
-  const nearestTarget = useMemo(() => nearestTs || '', [nearestTs]);
-  const { data: nearestResult, isLoading: nearestLoading } = useNearestReadings(
+  // Nearest mode – convert datetime-local value to ISO 8601
+  const nearestTarget = useMemo(() => {
+    if (!nearestTs) return '';
+    const d = new Date(nearestTs);
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+  }, [nearestTs]);
+  const { data: nearestResult, isLoading: nearestLoading, error: nearestError } = useNearestReadings(
     defaultSensorIds ?? [],
     nearestTarget,
     1,
@@ -131,6 +135,7 @@ export function ReadingsExplorer({ sensorIds: defaultSensorIds, siteId: defaultS
             />
           </div>
           {nearestLoading && <span className="text-xs text-slate-400 animate-pulse">Searching…</span>}
+          {nearestError && <span className="text-xs text-red-500">Error: {(nearestError as Error).message}</span>}
         </div>
       )}
 

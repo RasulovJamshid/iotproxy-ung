@@ -9,6 +9,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CurrentOrg } from '../auth/decorators/current-org.decorator';
 import { AuthUser, OrgContext } from '../auth/interfaces/auth-user.interface';
 import { PERMISSIONS } from '@iotproxy/shared';
+import { canRead } from '../auth/permission.helpers';
 import { SitesService } from './sites.service';
 
 @ApiTags('sites')
@@ -44,9 +45,8 @@ export class SitesController {
       organizationId = orgIdParam;
     }
 
-    // API key must have 'query' or 'admin' permission
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
-      throw new UnauthorizedException('API key lacks query permission');
+    if (org && !canRead(org)) {
+      throw new UnauthorizedException('API key lacks read permission');
     }
 
     // API key scoped to a single site — return only that site
@@ -73,9 +73,8 @@ export class SitesController {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
     
-    // API key must have 'query' or 'admin' permission
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
-      throw new UnauthorizedException('API key lacks query permission');
+    if (org && !canRead(org)) {
+      throw new UnauthorizedException('API key lacks read permission');
     }
     
     return this.service.findOne(id, organizationId);

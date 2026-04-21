@@ -10,6 +10,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CurrentOrg } from '../auth/decorators/current-org.decorator';
 import { AuthUser, OrgContext } from '../auth/interfaces/auth-user.interface';
 import { PERMISSIONS } from '@iotproxy/shared';
+import { canRead } from '../auth/permission.helpers';
 import { AlertsService } from './alerts.service';
 
 @ApiTags('alerts')
@@ -28,9 +29,8 @@ export class AlertsController {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
     
-    // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
-      throw new UnauthorizedException('API key lacks query permission');
+    if (org && !canRead(org)) {
+      throw new UnauthorizedException('API key lacks read permission');
     }
     
     return this.service.findRules(organizationId);
@@ -113,9 +113,8 @@ export class AlertsController {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
     
-    // API key must have 'read', 'query', or 'admin' permission
-    if (org && !org.permissions.some(p => ([PERMISSIONS.QUERY, PERMISSIONS.ADMIN] as string[]).includes(p))) {
-      throw new UnauthorizedException('API key lacks query permission');
+    if (org && !canRead(org)) {
+      throw new UnauthorizedException('API key lacks read permission');
     }
     
     return this.service.getEvents(organizationId, sensorId);

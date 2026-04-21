@@ -34,66 +34,60 @@ The following controllers now support **both JWT and API key authentication**:
 - Data collectors
 - MQTT bridges
 
-**Example:**
-```bash
-curl -X POST http://localhost:3000/api/v1/ingest/readings \
-  -H "X-API-Key: iotproxy_live_ingest_key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sensorId": "temp-01",
-    "phenomenonTime": "2026-04-10T06:30:00Z",
-    "data": { "temperature": 23.5 }
-  }'
-```
-
 ---
 
 ### **2. `read` Permission**
 
-**Purpose:** Query and read data (read-only access)
+**Purpose:** List and view resources (read-only, no time-series data)
 
 **Allowed Operations:**
+- ✅ `GET /api/v1/organizations/me` (own org info)
+- ✅ `GET /api/v1/sites` (list sites)
+- ✅ `GET /api/v1/sites/:id` (get site details)
+- ✅ `GET /api/v1/site-groups` (list site groups)
+- ✅ `GET /api/v1/site-groups/:id` (get group details)
 - ✅ `GET /api/v1/sensors` (list sensors)
 - ✅ `GET /api/v1/sensors/:id` (get sensor details)
 - ✅ `GET /api/v1/sensors/:id/config` (get sensor config)
-- ✅ `GET /api/v1/sites` (list sites)
-- ✅ `GET /api/v1/sites/:id` (get site details)
-- ✅ `GET /api/v1/query/readings/:sensorId` (time-series query)
-- ✅ `GET /api/v1/query/sites/:siteId/latest` (latest readings)
+- ✅ `GET /api/v1/sensor-types` (list sensor types)
+- ✅ `GET /api/v1/sensor-categories` (list sensor categories)
+- ✅ `GET /api/v1/query/sites/:siteId/latest` (latest readings per sensor)
 - ✅ `GET /api/v1/alerts/rules` (list alert rules)
 - ✅ `GET /api/v1/alerts/events` (get alert events)
+
+**Use Cases:**
+- Inventory / asset management dashboards
+- Mobile apps (resource browsing)
+- Public data portals
+- Monitoring UIs that only need latest values
+
+---
+
+### **3. `query` Permission** *(implies `read`)*
+
+**Purpose:** Query time-series data (aggregations, search, nearest)
+
+**Allowed Operations:**
+- ✅ **All `read` operations**
+- ✅ `GET /api/v1/query/readings/:sensorId` (time-series query with aggregation)
+- ✅ `POST /api/v1/query/readings/search` (advanced search)
+- ✅ `POST /api/v1/query/readings/nearest` (nearest-to-time)
 
 **Use Cases:**
 - Dashboards (Grafana, Tableau)
 - Analytics platforms
 - Reporting tools
-- Mobile apps (read-only)
-- Public data access
-
-**Example:**
-```bash
-# List all sensors
-curl http://localhost:3000/api/v1/sensors \
-  -H "X-API-Key: iotproxy_live_read_key"
-
-# Query time-series data
-curl "http://localhost:3000/api/v1/query/readings/sensor-uuid?startTs=2026-04-01T00:00:00Z&endTs=2026-04-10T00:00:00Z" \
-  -H "X-API-Key: iotproxy_live_read_key"
-
-# Get latest readings for a site
-curl http://localhost:3000/api/v1/query/sites/site-uuid/latest \
-  -H "X-API-Key: iotproxy_live_read_key"
-```
+- Data science notebooks
 
 ---
 
-### **3. `admin` Permission**
+### **4. `admin` Permission** *(implies `query` + `read`)*
 
-**Purpose:** Full administrative access (read + write + manage)
+**Purpose:** Full administrative access (read + query + write + manage)
 
 **Allowed Operations:**
 - ✅ **All `ingest` operations**
-- ✅ **All `read` operations**
+- ✅ **All `query` operations** (includes all `read` operations)
 - ✅ `POST /api/v1/sensors` (create sensor)
 - ✅ `PATCH /api/v1/sensors/:id` (update sensor)
 - ✅ `PATCH /api/v1/sensors/:id/status` (update sensor status)
@@ -111,43 +105,45 @@ curl http://localhost:3000/api/v1/query/sites/site-uuid/latest \
 - CI/CD pipelines
 - Infrastructure-as-code tools
 - Admin dashboards
-- Backup/migration tools
 
-**Example:**
-```bash
-# Create a new sensor
-curl -X POST http://localhost:3000/api/v1/sensors \
-  -H "X-API-Key: iotproxy_live_admin_key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "siteId": "site-uuid",
-    "name": "New Temperature Sensor",
-    "description": "Warehouse zone A"
-  }'
+---
 
-# Update site status
-curl -X PATCH http://localhost:3000/api/v1/sites/site-uuid/status \
-  -H "X-API-Key: iotproxy_live_admin_key" \
-  -H "Content-Type: application/json" \
-  -d '{ "status": "ACTIVE" }'
+## Permission Hierarchy
+
 ```
+admin  ⊃  query  ⊃  read
+```
+
+- `read` — view/list resources only
+- `query` — everything in `read` + time-series data access
+- `admin` — everything in `query` + all write/manage operations
+- `ingest` — independent; only for sending data
 
 ---
 
 ## Permission Matrix
 
-| Endpoint | `ingest` | `read` | `admin` | JWT |
-|----------|----------|--------|---------|-----|
-| **POST** `/ingest/readings` | ✅ | ❌ | ✅ | ✅ |
-| **GET** `/sensors` | ❌ | ✅ | ✅ | ✅ |
-| **GET** `/sensors/:id` | ❌ | ✅ | ✅ | ✅ |
-| **POST** `/sensors` | ❌ | ❌ | ✅ | ✅ (ADMIN) |
-| **PATCH** `/sensors/:id` | ❌ | ❌ | ✅ | ✅ (ADMIN) |
-| **GET** `/sites` | ❌ | ✅ | ✅ | ✅ |
-| **POST** `/sites` | ❌ | ❌ | ✅ | ✅ (ADMIN) |
-| **GET** `/query/readings/:id` | ❌ | ✅ | ✅ | ✅ |
-| **GET** `/alerts/rules` | ❌ | ✅ | ✅ | ✅ |
-| **POST** `/alerts/rules` | ❌ | ❌ | ✅ | ✅ (ADMIN) |
+| Endpoint | `ingest` | `read` | `query` | `admin` | JWT |
+|----------|----------|--------|---------|---------|-----|
+| **POST** `/ingest/readings` | ✅ | ❌ | ❌ | ✅ | ✅ |
+| **GET** `/organizations/me` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/sites` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/sites/:id` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/site-groups` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/sensors` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/sensors/:id` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/sensor-types` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/sensor-categories` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/query/sites/:id/latest` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/alerts/rules` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/alerts/events` | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **GET** `/query/readings/:id` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **POST** `/query/readings/search` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **POST** `/query/readings/nearest` | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **POST** `/sensors` | ❌ | ❌ | ❌ | ✅ | ✅ (ADMIN) |
+| **PATCH** `/sensors/:id` | ❌ | ❌ | ❌ | ✅ | ✅ (ADMIN) |
+| **POST** `/sites` | ❌ | ❌ | ❌ | ✅ | ✅ (ADMIN) |
+| **POST** `/alerts/rules` | ❌ | ❌ | ❌ | ✅ | ✅ (ADMIN) |
 
 ---
 
@@ -192,7 +188,8 @@ curl http://localhost:3000/api/v1/sensors \
    - **Site scope:** Optional (restrict to specific site)
    - **Permissions:** Select one or more:
      - ☐ `ingest` - Send data
-     - ☐ `read` - Query data
+     - ☐ `read` - List/view resources
+     - ☐ `query` - Read + time-series queries
      - ☐ `admin` - Full access
    - **WebSocket:** Enable for real-time updates
    - **Expires at:** Optional expiration date
@@ -240,8 +237,10 @@ curl -X POST http://localhost:3000/api/v1/api-keys \
 | Use Case | Permissions | Example |
 |----------|-------------|---------|
 | **IoT Device (send-only)** | `ingest` | Temperature sensor |
-| **Dashboard (view-only)** | `read` | Grafana, Tableau |
-| **Smart Device (send + query)** | `ingest` + `read` | Smart thermostat |
+| **Asset Browser (lists only)** | `read` | Inventory dashboard |
+| **Analytics Dashboard** | `query` | Grafana, Tableau |
+| **Smart Device (send + view)** | `ingest` + `read` | Smart thermostat |
+| **Full Dashboard + Ingest** | `ingest` + `query` | Edge gateway with UI |
 | **Admin Tool** | `admin` | Infrastructure automation |
 | **Public API** | `read` | Public data portal |
 
@@ -442,7 +441,8 @@ curl -X POST http://localhost:3000/api/v1/sensors \
 ## Summary
 
 ✅ **API keys now work with all major endpoints**  
-✅ **Three permission levels: `ingest`, `read`, `admin`**  
+✅ **Four permission levels: `ingest`, `read`, `query`, `admin`**  
+✅ **Permission hierarchy: `admin` ⊃ `query` ⊃ `read`**  
 ✅ **Flexible authentication: API key OR JWT**  
 ✅ **Site-scoped keys for multi-tenant security**  
 ✅ **Backward compatible with existing JWT authentication**

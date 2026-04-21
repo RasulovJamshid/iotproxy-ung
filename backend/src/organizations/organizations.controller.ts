@@ -1,22 +1,40 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, ForbiddenException } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { FlexibleAuthGuard } from '../auth/guards/flexible-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser } from '../auth/interfaces/auth-user.interface';
+import { CurrentOrg } from '../auth/decorators/current-org.decorator';
+import { AuthUser, OrgContext } from '../auth/interfaces/auth-user.interface';
+import { canRead } from '../auth/permission.helpers';
 import { OrganizationsService } from './organizations.service';
 
 @ApiTags('organizations')
 @ApiBearerAuth('jwt')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiSecurity('api-key')
 @Controller('organizations')
 export class OrganizationsController {
   constructor(private service: OrganizationsService) {}
 
+  // ── Current org (API key + JWT) ─────────────────────────────────────────
+
+  @Get('me')
+  @UseGuards(FlexibleAuthGuard)
+  getMyOrg(
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+    if (org && !canRead(org)) throw new UnauthorizedException('API key lacks read permission');
+    return this.service.findOne(organizationId);
+  }
+
   // ── Organizations ─────────────────────────────────────────────────────────
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
   findAll() {
     return this.service.findAll();
@@ -24,12 +42,14 @@ export class OrganizationsController {
 
   /** Get all org memberships for a specific user. SYSTEM_ADMIN only. */
   @Get('members/:userId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
   getUserMemberships(@Param('userId') userId: string) {
     return this.service.findUserMemberships(userId);
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     const orgId = user.role === 'SYSTEM_ADMIN' ? id : user.organizationId;
@@ -37,18 +57,21 @@ export class OrganizationsController {
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
   create(@Body() body: { name: string; slug: string; rateLimitRpm?: number; rawRetentionDays?: number | null }) {
     return this.service.create(body);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
   update(@Param('id') id: string, @Body() body: any) {
     return this.service.update(id, body);
   }
 
   @Patch(':id/retention-defaults')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   updateRetentionDefaults(
     @Param('id') id: string,
@@ -66,6 +89,7 @@ export class OrganizationsController {
   // ── Users / membership ────────────────────────────────────────────────────
 
   @Get(':id/users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   users(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     const orgId = user.role === 'SYSTEM_ADMIN' ? id : user.organizationId;
@@ -73,6 +97,7 @@ export class OrganizationsController {
   }
 
   @Post(':id/users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   createUser(
     @Param('id') id: string,
@@ -88,6 +113,7 @@ export class OrganizationsController {
 
   /** Add an existing user (by userId) to an org. SYSTEM_ADMIN only. */
   @Post(':id/members')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
   addMember(
     @Param('id') id: string,
@@ -98,6 +124,7 @@ export class OrganizationsController {
 
   /** Update a user's role within a specific org. SYSTEM_ADMIN only. */
   @Patch(':id/members/:userId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
   updateMember(
     @Param('id') id: string,
@@ -109,12 +136,14 @@ export class OrganizationsController {
 
   /** Remove a user from an org. SYSTEM_ADMIN only. */
   @Delete(':id/members/:userId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
   removeMember(@Param('id') id: string, @Param('userId') userId: string) {
     return this.service.removeUserFromOrg(userId, id);
   }
 
   @Patch(':id/users/:userId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   updateUser(
     @Param('id') id: string,

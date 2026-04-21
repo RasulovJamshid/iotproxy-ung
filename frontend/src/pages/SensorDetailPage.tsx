@@ -225,7 +225,7 @@ export default function SensorDetailPage() {
                     value={rawRetentionDraft}
                     onChange={(e) => setRawRetentionDraft(e.target.value)}
                   >
-                    <option value="">Raw: org default</option>
+                    <option value="">Raw: site default</option>
                     <option value="1">1 day</option>
                     <option value="7">7 days</option>
                     <option value="30">30 days</option>
@@ -238,7 +238,7 @@ export default function SensorDetailPage() {
                     value={summaryRetentionDraft}
                     onChange={(e) => setSummaryRetentionDraft(e.target.value)}
                   >
-                    <option value="">Summary: org default</option>
+                    <option value="">Summary: site default</option>
                     <option value="1">1 month</option>
                     <option value="3">3 months</option>
                     <option value="6">6 months</option>
@@ -250,7 +250,7 @@ export default function SensorDetailPage() {
                     value={summaryAggModeDraft}
                     onChange={(e) => setSummaryAggModeDraft(e.target.value)}
                   >
-                    <option value="">Agg: org default</option>
+                    <option value="">Agg: site default</option>
                     <option value="AVG">Average</option>
                     <option value="MIN">Minimum</option>
                     <option value="MAX">Maximum</option>
@@ -367,9 +367,9 @@ export default function SensorDetailPage() {
             { label: 'Last Reading', value: sensor.lastReadingAt ? formatDistanceToNow(new Date(sensor.lastReadingAt), { addSuffix: true }) : '—' },
             { label: 'Reporting Interval', value: sensor.reportingIntervalSeconds ? `${sensor.reportingIntervalSeconds}s` : '—' },
             { label: 'Record Limit', value: sensor.maxRecordsPerSensor != null ? `${sensor.maxRecordsPerSensor} records` : 'No limit' },
-            { label: 'Raw Retention', value: sensor.rawRetentionDays != null ? (sensor.rawRetentionDays === 0 ? 'Unlimited' : `${sensor.rawRetentionDays} days`) : 'Org default' },
-            { label: 'Summary Retention', value: sensor.summaryRetentionMonths != null ? (sensor.summaryRetentionMonths === 0 ? 'Unlimited' : `${sensor.summaryRetentionMonths} months`) : 'Org default' },
-            { label: 'Summary Mode', value: sensor.summaryAggMode ?? 'Org default' },
+            { label: 'Raw Retention', value: sensor.rawRetentionDays != null ? (sensor.rawRetentionDays === 0 ? 'Unlimited' : `${sensor.rawRetentionDays} days`) : 'Site default' },
+            { label: 'Summary Retention', value: sensor.summaryRetentionMonths != null ? (sensor.summaryRetentionMonths === 0 ? 'Unlimited' : `${sensor.summaryRetentionMonths} months`) : 'Site default' },
+            { label: 'Summary Mode', value: sensor.summaryAggMode ?? 'Site default' },
             { label: 'Agg Field', value: sensor.aggField || 'value' },
             { label: 'ID', value: <span className="font-mono text-xs">{sensor.id}</span> },
           ].map(({ label, value }) => (

@@ -5,6 +5,7 @@ import { FlexibleAuthGuard } from '../auth/guards/flexible-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CurrentOrg } from '../auth/decorators/current-org.decorator';
 import { AuthUser, OrgContext } from '../auth/interfaces/auth-user.interface';
+import { canRead } from '../auth/permission.helpers';
 import { SensorCategoriesService } from './sensor-categories.service';
 
 @ApiTags('sensor-categories')
@@ -20,6 +21,7 @@ export class SensorCategoriesController {
   ) {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
+    if (org && !canRead(org)) throw new UnauthorizedException('API key lacks read permission');
     
     return this.service.findAll(organizationId);
   }
@@ -32,6 +34,7 @@ export class SensorCategoriesController {
   ) {
     const organizationId = user?.organizationId ?? org?.organizationId;
     if (!organizationId) throw new UnauthorizedException();
+    if (org && !canRead(org)) throw new UnauthorizedException('API key lacks read permission');
     
     return this.service.findOne(id, organizationId);
   }

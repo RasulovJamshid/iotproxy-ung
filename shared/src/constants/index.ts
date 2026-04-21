@@ -37,6 +37,7 @@ export const WEBHOOK_EVENTS = {
 } as const;
 
 export const PERMISSIONS = {
+  READ:           'read',
   INGEST:         'ingest',
   QUERY:          'query',
   MANAGE_SENSORS: 'manage:sensors',

@@ -5,9 +5,10 @@ import { User } from './user.entity';
 import { UserOrganization } from './user-organization.entity';
 import { OrganizationsController } from './organizations.controller';
 import { OrganizationsService } from './organizations.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Organization, User, UserOrganization])],
+  imports: [TypeOrmModule.forFeature([Organization, User, UserOrganization]), AuthModule],
   controllers: [OrganizationsController],
   providers: [OrganizationsService],
   exports: [OrganizationsService, TypeOrmModule],
