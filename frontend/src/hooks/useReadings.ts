@@ -19,6 +19,7 @@ export function useReadings(params: ReadingsParams) {
           endTs: params.endTs,
           agg: params.agg ?? 'AVG',
           intervalMs: params.intervalMs ?? 3_600_000,
+          aggField: 'value',
         },
       });
       return data as Array<{ bucket: string; avg_val: number; min_val: number; max_val: number }>;
