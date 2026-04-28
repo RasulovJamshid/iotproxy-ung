@@ -40,7 +40,7 @@ export class BackupService {
         this.logger.log(`Created MinIO bucket: ${this.bucket}`);
       }
     } catch (error) {
-      this.logger.error(`Failed to ensure bucket exists: ${error.message}`);
+      this.logger.error(`Failed to ensure bucket exists: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
