@@ -419,6 +419,20 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     return result.rowCount ?? 0;
   }
 
+  /**
+   * Count how many readings will be deleted for a sensor (retention preview).
+   */
+  async countReadingsOlderThan(sensorId: string, cutoffDate: Date): Promise<number> {
+    const result = await this.pool.query(
+      `SELECT COUNT(*) as count
+       FROM sensor_readings
+       WHERE sensor_id = $1
+         AND phenomenon_time < $2`,
+      [sensorId, cutoffDate],
+    );
+    return parseInt(result.rows[0]?.count ?? '0', 10);
+  }
+
   // ── Advanced search ─────────────────────────────────────────────────────────
 
   /**

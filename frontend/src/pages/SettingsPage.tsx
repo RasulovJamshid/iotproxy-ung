@@ -4,6 +4,7 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { PageSpinner } from '../components/ui/Spinner';
 import { useAuth } from '../contexts/AuthContext';
+import { RetentionPreview } from '../components/RetentionPreview';
 
 function EditIcon() {
   return (
@@ -158,6 +159,9 @@ export default function SettingsPage() {
           Fallback chain: sensor config → site default → org default. Sites can override these defaults individually.
         </p>
       </div>
+
+      {/* Retention Preview */}
+      {org && isAdmin && <RetentionPreview organizationId={org.id} />}
 
       {/* Current user */}
       <div className="card">

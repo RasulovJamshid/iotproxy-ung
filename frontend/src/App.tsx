@@ -22,6 +22,7 @@ import SettingsPage from './pages/SettingsPage';
 import HealthPage from './pages/HealthPage';
 import UsersPage from './pages/UsersPage';
 import OrganizationsPage from './pages/OrganizationsPage';
+import BackupsPage from './pages/BackupsPage';
 import ServerErrorPage from './pages/ServerErrorPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -67,6 +68,7 @@ const Icons = {
   Health:    () => <Icon d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />,
   Users:     () => <Icon d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />,
   Orgs:      () => <Icon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />,
+  Database:  () => <Icon d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />,
   Activity:  () => <Icon d="M22 12h-4l-3 9L9 3l-3 9H2" />,
   Logout:    () => <Icon d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />,
   Menu:      () => <Icon d="M4 6h16M4 12h16M4 18h16" />,
@@ -116,6 +118,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/organizations', label: 'Organizations', Icon: Icons.Orgs, roles: ['SYSTEM_ADMIN'] },
       { to: '/users',    label: 'Users',    Icon: Icons.Users },
+      { to: '/backups',  label: 'Backups',  Icon: Icons.Database, roles: ['ADMIN', 'SYSTEM_ADMIN'] },
       { to: '/settings', label: 'Settings', Icon: Icons.Settings },
       { to: '/health',   label: 'Health',   Icon: Icons.Health },
     ],
@@ -283,6 +286,7 @@ const pageTitles: Record<string, string> = {
   '/webhooks': 'Webhooks',
   '/organizations': 'Organizations',
   '/users':    'Users',
+  '/backups':  'Backups',
   '/settings': 'Settings',
   '/health':   'Health',
 };
@@ -431,6 +435,7 @@ export default function App() {
                             <Route path="/webhooks"      element={<WebhooksPage />} />
                             <Route path="/organizations" element={<OrganizationsPage />} />
                             <Route path="/users"         element={<UsersPage />} />
+                            <Route path="/backups"       element={<BackupsPage />} />
                             <Route path="/settings"      element={<SettingsPage />} />
                             <Route path="/health"        element={<HealthPage />} />
                             <Route path="*"              element={<NotFoundPage />} />

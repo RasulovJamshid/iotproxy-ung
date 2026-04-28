@@ -22,6 +22,7 @@ export const QUEUE_NAMES = {
   NOTIFICATIONS: 'notifications',
   EXPORTS:       'exports',
   PULL:          'pull',
+  BACKUPS:       'backups',
 } as const;
 
 export const WEBHOOK_EVENTS = {

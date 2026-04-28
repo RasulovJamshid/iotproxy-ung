@@ -116,4 +116,37 @@ export class RetentionService {
   ) {
     await this.orgs.update(organizationId, config);
   }
+
+  /**
+   * Preview retention impact: shows what data will be deleted for each sensor.
+   */
+  async previewRetention(organizationId: string) {
+    const org = await this.orgs.findOne({
+      where: { id: organizationId },
+      select: ['id', 'defaultRawRetentionDays', 'defaultSummaryRetentionMonths'],
+    });
+    if (!org) return { sensors: [], summary: { totalSensors: 0, totalReadingsToDelete: 0 } };
+
+    const defaultDays = org.defaultRawRetentionDays ?? 0;
+    const sensors = await this.timescale.getSensorsNeedingRollup(organizationId, defaultDays);
+
+    const preview = await Promise.all(
+      sensors.map(async ({ sensorId, cutoffDate }) => {
+        const count = await this.timescale.countReadingsOlderThan(sensorId, cutoffDate);
+        return { sensorId, cutoffDate, readingsToDelete: count };
+      }),
+    );
+
+    const totalReadingsToDelete = preview.reduce((sum, p) => sum + p.readingsToDelete, 0);
+
+    return {
+      sensors: preview,
+      summary: {
+        totalSensors: preview.length,
+        totalReadingsToDelete,
+        defaultRawRetentionDays: org.defaultRawRetentionDays,
+        defaultSummaryRetentionMonths: org.defaultSummaryRetentionMonths,
+      },
+    };
+  }
 }
