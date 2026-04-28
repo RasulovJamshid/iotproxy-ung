@@ -103,7 +103,15 @@ export class BackupService {
     }
 
     // Generate presigned URL valid for 1 hour
-    const url = await this.minio.presignedGetObject(this.bucket, backup.filePath, 3600);
+    let url = await this.minio.presignedGetObject(this.bucket, backup.filePath, 3600);
+    
+    // Replace internal endpoint with external endpoint for browser access
+    const internalEndpoint = this.config.get<string>('minio.endpoint')!;
+    const externalEndpoint = this.config.get<string>('minio.externalEndpoint')!;
+    if (internalEndpoint !== externalEndpoint) {
+      url = url.replace(internalEndpoint, externalEndpoint);
+    }
+    
     return { url, expiresIn: 3600 };
   }
 

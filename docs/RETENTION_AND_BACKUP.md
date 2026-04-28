@@ -191,6 +191,14 @@ POST   /admin/organizations/:orgId/backups/:id/restore - Restore backup (SYSTEM_
 - Path format: `backups/{organizationId}/{filename}.sql`
 - Files are SQL dumps created by `pg_dump`
 
+**Production Configuration:**
+For production deployments, set `MINIO_EXTERNAL_ENDPOINT` to your publicly accessible MinIO URL:
+```bash
+MINIO_ENDPOINT=minio:9000                    # Internal Docker hostname
+MINIO_EXTERNAL_ENDPOINT=minio.yourdomain.com:9000  # Public URL for downloads
+```
+This ensures presigned download URLs are accessible from browsers outside the container network.
+
 ### Retention Logic
 
 The retention preview uses the same SQL logic as the nightly retention job:

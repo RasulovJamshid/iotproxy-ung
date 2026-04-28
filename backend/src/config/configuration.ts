@@ -62,10 +62,11 @@ export default () => ({
   },
 
   minio: {
-    endpoint:  process.env.MINIO_ENDPOINT,
-    accessKey: process.env.MINIO_ACCESS_KEY,
-    secretKey: process.env.MINIO_SECRET_KEY,
-    bucket:    process.env.MINIO_BUCKET ?? 'iotproxy-exports',
+    endpoint:         process.env.MINIO_ENDPOINT,
+    externalEndpoint: process.env.MINIO_EXTERNAL_ENDPOINT ?? process.env.MINIO_ENDPOINT,
+    accessKey:        process.env.MINIO_ACCESS_KEY,
+    secretKey:        process.env.MINIO_SECRET_KEY,
+    bucket:           process.env.MINIO_BUCKET ?? 'iotproxy-exports',
   },
 
   smtp: {
