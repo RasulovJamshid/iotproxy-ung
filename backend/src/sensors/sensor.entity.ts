@@ -58,7 +58,7 @@ export class Sensor {
   @Column({ name: 'reporting_interval_seconds', nullable: true, type: 'int' })
   reportingIntervalSeconds?: number;
 
-  @Column({ name: 'max_records_per_sensor', nullable: true, type: 'int', default: 10 })
+  @Column({ name: 'max_records_per_sensor', nullable: true, type: 'int' })
   maxRecordsPerSensor?: number | null;
 
   @Column({ name: 'raw_retention_days', nullable: true, type: 'int' })

@@ -27,8 +27,9 @@ export class RollupService {
     let totalRolled = 0;
 
     for (const org of orgs) {
-      const defaultDays = org.defaultRawRetentionDays ?? 7;
-      if (defaultDays <= 0) continue;
+      // Always run — the SQL uses NULLIF to treat 0 as unlimited and
+      // excludes sensors whose effective retention is NULL (all levels unlimited).
+      const defaultDays = org.defaultRawRetentionDays ?? 0;
 
       try {
         const sensors = await this.timescale.getSensorsNeedingRollup(org.id, defaultDays);

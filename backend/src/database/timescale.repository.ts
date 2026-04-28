@@ -388,13 +388,14 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     const result = await this.pool.query(
       `SELECT DISTINCT s.id AS sensor_id,
               COALESCE(s.agg_field, 'value') AS agg_field,
-              (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, si.default_raw_retention_days, $2))) AS cutoff_date
+              (CURRENT_DATE - make_interval(days => COALESCE(NULLIF(s.raw_retention_days, 0), NULLIF(si.default_raw_retention_days, 0), NULLIF($2, 0)))) AS cutoff_date
        FROM sensors s
        JOIN sites si ON si.id = s.site_id
        JOIN sensor_readings sr ON sr.sensor_id = s.id
        WHERE s.organization_id = $1
          AND s.deleted_at IS NULL
-         AND sr.phenomenon_time < (CURRENT_DATE - make_interval(days => COALESCE(s.raw_retention_days, si.default_raw_retention_days, $2)))
+         AND COALESCE(NULLIF(s.raw_retention_days, 0), NULLIF(si.default_raw_retention_days, 0), NULLIF($2, 0)) IS NOT NULL
+         AND sr.phenomenon_time < (CURRENT_DATE - make_interval(days => COALESCE(NULLIF(s.raw_retention_days, 0), NULLIF(si.default_raw_retention_days, 0), NULLIF($2, 0))))
        LIMIT 10000`,
       [organizationId, defaultRawRetentionDays],
     );
