@@ -40,6 +40,19 @@ export class BackupWorker extends WorkerHost {
       secretKey: this.config.get<string>('minio.secretKey')!,
     });
     this.bucket = this.config.get<string>('minio.bucket')!;
+    this.ensureBucket();
+  }
+
+  private async ensureBucket(): Promise<void> {
+    try {
+      const exists = await this.minio.bucketExists(this.bucket);
+      if (!exists) {
+        await this.minio.makeBucket(this.bucket, 'us-east-1');
+        this.logger.log(`Created MinIO bucket: ${this.bucket}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to ensure bucket exists: ${error.message}`);
+    }
   }
 
   async process(job: Job<BackupJob>): Promise<void> {
