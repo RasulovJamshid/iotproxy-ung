@@ -62,24 +62,7 @@ export class RetentionService {
         );
       }
 
-      // ── 2. Legacy org-level bulk deletion (backward compat) ───────────
-      if (org.rawRetentionDays && org.rawRetentionDays > 0) {
-        try {
-          const deleted = await this.timescale.deleteOlderThan(org.id, org.rawRetentionDays);
-          if (deleted > 0) {
-            this.logger.log(
-              `Retention (legacy): deleted ${deleted} readings for org ${org.id} (>${org.rawRetentionDays}d)`,
-            );
-          }
-        } catch (err) {
-          this.logger.error(
-            `Legacy retention failed for org ${org.id}`,
-            err instanceof Error ? err.stack : String(err),
-          );
-        }
-      }
-
-      // ── 3. Summary retention purge ────────────────────────────────────
+      // ── 2. Summary retention purge ────────────────────────────────────
       const summaryMonths = org.defaultSummaryRetentionMonths;
       if (summaryMonths && summaryMonths > 0) {
         try {
@@ -102,7 +85,7 @@ export class RetentionService {
   }
 
   async setRetention(organizationId: string, days: number) {
-    await this.orgs.update(organizationId, { rawRetentionDays: days });
+    await this.orgs.update(organizationId, { defaultRawRetentionDays: days });
   }
 
   async setRetentionConfig(
