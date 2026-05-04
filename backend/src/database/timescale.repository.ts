@@ -411,9 +411,15 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
    */
   async deleteRawOlderThanPerSensor(sensorId: string, cutoffDate: Date): Promise<number> {
     const result = await this.pool.query(
-      `DELETE FROM sensor_readings
-       WHERE sensor_id = $1
-         AND phenomenon_time < $2`,
+      `DELETE FROM sensor_readings r
+       WHERE r.sensor_id = $1
+         AND r.phenomenon_time < $2
+         AND EXISTS (
+           SELECT 1
+           FROM readings_daily_summary ds
+           WHERE ds.sensor_id = r.sensor_id
+             AND ds.day = date_trunc('day', r.phenomenon_time)::date
+         )`,
       [sensorId, cutoffDate],
     );
     return result.rowCount ?? 0;
@@ -425,9 +431,15 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
   async countReadingsOlderThan(sensorId: string, cutoffDate: Date): Promise<number> {
     const result = await this.pool.query(
       `SELECT COUNT(*) as count
-       FROM sensor_readings
-       WHERE sensor_id = $1
-         AND phenomenon_time < $2`,
+       FROM sensor_readings r
+       WHERE r.sensor_id = $1
+         AND r.phenomenon_time < $2
+         AND EXISTS (
+           SELECT 1
+           FROM readings_daily_summary ds
+           WHERE ds.sensor_id = r.sensor_id
+             AND ds.day = date_trunc('day', r.phenomenon_time)::date
+         )`,
       [sensorId, cutoffDate],
     );
     return parseInt(result.rows[0]?.count ?? '0', 10);

@@ -38,7 +38,28 @@ export class RetentionService {
         const sensors = await this.timescale.getSensorsNeedingRollup(org.id, defaultDays);
         let totalDeleted = 0;
 
-        for (const { sensorId, cutoffDate } of sensors) {
+        for (const { sensorId, aggField, cutoffDate } of sensors) {
+          // Just-in-time rollup to guarantee summaries exist prior to purge
+          try {
+            const rolled = await this.timescale.rollupDailySummary(
+              sensorId,
+              org.id,
+              aggField,
+              cutoffDate,
+            );
+            if (rolled > 0) {
+              this.logger.log(
+                `Retention: materialised ${rolled} daily summaries for sensor ${sensorId} (org ${org.id}) before purge`,
+              );
+            }
+          } catch (err) {
+            this.logger.error(
+              `On-demand rollup failed for sensor ${sensorId}`,
+              err instanceof Error ? err.stack : String(err),
+            );
+          }
+
+          // Now safely delete raw data older than cutoff
           try {
             const deleted = await this.timescale.deleteRawOlderThanPerSensor(sensorId, cutoffDate);
             totalDeleted += deleted;
