@@ -147,9 +147,7 @@ export class BackfillWorker extends WorkerHost implements OnModuleInit {
 
     // Assign phenomenonTime based on the chosen strategy since the external API
     // may not include timestamps per reading.
-    const winStart = new Date(windowStart);
-    const winEnd   = new Date(windowEnd);
-    const timed    = this.assignTimestamps(mappedReadings, winStart, winEnd, timestampStrategy);
+    const timed = this.assignTimestamps(mappedReadings, winStart, winEnd, timestampStrategy);
 
     const batchId = randomUUID();
     const receivedAt = new Date().toISOString();

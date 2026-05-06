@@ -17,6 +17,7 @@ export interface RetentionPreview {
 
 export interface RetentionRunResult {
   sensorsProcessed: number;
+  summariesCreated: number;
   rawReadingsDeleted: number;
   summariesPurged: number;
 }

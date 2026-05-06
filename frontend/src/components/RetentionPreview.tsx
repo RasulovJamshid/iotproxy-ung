@@ -43,7 +43,7 @@ export function RetentionPreview({ organizationId }: Props) {
     );
   }
 
-  const sensorMap = new Map(allSensors?.map((s) => [s.id, s]));
+  const sensorMap = new Map((allSensors?.data ?? []).map((s) => [s.id, s]));
 
   return (
     <div className="space-y-4">

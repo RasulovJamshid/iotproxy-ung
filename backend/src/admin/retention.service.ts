@@ -38,6 +38,14 @@ export class RetentionService {
         const sensors = await this.timescale.getSensorsNeedingRollup(org.id, defaultDays);
         let totalDeleted = 0;
 
+        if (sensors.length > 0) {
+          const earliestCutoff = sensors.reduce(
+            (min, s) => s.cutoffDate < min ? s.cutoffDate : min,
+            sensors[0].cutoffDate,
+          );
+          await this.timescale.decompressChunksOlderThan(earliestCutoff);
+        }
+
         for (const { sensorId, aggField, cutoffDate } of sensors) {
           // Just-in-time rollup to guarantee summaries exist prior to purge
           try {
@@ -108,6 +116,7 @@ export class RetentionService {
   async runRetentionForOrg(organizationId: string): Promise<{
     sensorsProcessed: number;
     rawReadingsDeleted: number;
+    summariesCreated: number;
     summariesPurged: number;
   }> {
     const org = await this.orgs.findOne({
@@ -118,11 +127,24 @@ export class RetentionService {
 
     const defaultDays = org.defaultRawRetentionDays ?? 0;
     const sensors = await this.timescale.getSensorsNeedingRollup(organizationId, defaultDays);
+
+    // Decompress any TimescaleDB chunks that overlap the retention window before
+    // attempting per-row DELETE — compressed chunks silently return 0 deleted rows.
+    if (sensors.length > 0) {
+      const earliestCutoff = sensors.reduce(
+        (min, s) => s.cutoffDate < min ? s.cutoffDate : min,
+        sensors[0].cutoffDate,
+      );
+      await this.timescale.decompressChunksOlderThan(earliestCutoff);
+    }
+
     let rawReadingsDeleted = 0;
+    let summariesCreated = 0;
 
     for (const { sensorId, aggField, cutoffDate } of sensors) {
       try {
-        await this.timescale.rollupDailySummary(sensorId, org.id, aggField, cutoffDate);
+        const rolled = await this.timescale.rollupDailySummary(sensorId, org.id, aggField, cutoffDate);
+        summariesCreated += rolled;
       } catch (err) {
         this.logger.error(
           `On-demand rollup failed for sensor ${sensorId}`,
@@ -155,10 +177,11 @@ export class RetentionService {
 
     this.logger.log(
       `Manual retention run for org ${organizationId}: ` +
-      `${sensors.length} sensors, ${rawReadingsDeleted} raw deleted, ${summariesPurged} summaries purged`,
+      `${sensors.length} sensors, ${summariesCreated} summaries created, ` +
+      `${rawReadingsDeleted} raw deleted, ${summariesPurged} summaries purged`,
     );
 
-    return { sensorsProcessed: sensors.length, rawReadingsDeleted, summariesPurged };
+    return { sensorsProcessed: sensors.length, summariesCreated, rawReadingsDeleted, summariesPurged };
   }
 
   async setRetention(organizationId: string, days: number) {

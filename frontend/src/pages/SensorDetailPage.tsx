@@ -28,6 +28,8 @@ const RANGES = [
   { label: '6h',  hours: 6 },
   { label: '24h', hours: 24 },
   { label: '7d',  hours: 168 },
+  { label: '30d', hours: 720 },
+  { label: '90d', hours: 2160 },
 ];
 
 function ChevronRight() {
@@ -92,7 +94,7 @@ export default function SensorDetailPage() {
     return {
       startTs:    subHours(now, rangeHours).toISOString(),
       endTs:      now.toISOString(),
-      intervalMs: rangeHours <= 6 ? 300_000 : rangeHours <= 24 ? 3_600_000 : 86_400_000,
+      intervalMs: rangeHours <= 6 ? 300_000 : rangeHours <= 168 ? 3_600_000 : 86_400_000,
     };
   }, [rangeHours]);
 
@@ -102,6 +104,8 @@ export default function SensorDetailPage() {
     endTs,
     agg: 'AVG',
     intervalMs,
+    aggField: sensor?.aggField ?? 'value',
+    rawRetentionDays: sensor?.rawRetentionDays ?? undefined,
   });
   const { data: site } = useSite(sensor?.siteId ?? '');
   const { data: events } = useAlertEvents(id);
@@ -118,7 +122,7 @@ export default function SensorDetailPage() {
   if (!sensor) return <p className="text-sm text-slate-500 dark:text-slate-400">Sensor not found.</p>;
 
   const chartData = (readings ?? []).map((r) => ({
-    time: format(new Date(r.bucket), rangeHours <= 24 ? 'HH:mm' : 'MMM d'),
+    time: format(new Date(r.bucket), rangeHours <= 24 ? 'HH:mm' : rangeHours <= 168 ? 'MMM d HH:mm' : 'MMM d'),
     avg: Number(r.avg_val?.toFixed(3)),
     min: Number(r.min_val?.toFixed(3)),
     max: Number(r.max_val?.toFixed(3)),
@@ -493,6 +497,8 @@ export default function SensorDetailPage() {
         {bottomTab === 'readings' && (() => {
           const rawRangeLabel = RANGES.find((r) => r.hours === rawRangeHours)?.label ?? `${rawRangeHours}h`;
           if (rawLoading) return <PageSpinner />;
+          const rawRetentionDays = sensor.rawRetentionDays ?? null;
+          const beyondRetention = rawRetentionDays != null && rawRetentionDays > 0 && rawRangeHours > rawRetentionDays * 24;
           if (!rawReadings || rawReadings.length === 0) {
             return (
               <div>
@@ -535,7 +541,18 @@ export default function SensorDetailPage() {
                     Clear All Readings
                   </button>
                 </div>
-                <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">No readings in the last {rawRangeLabel}.</p>
+                {beyondRetention ? (
+                  <div className="py-6 text-center space-y-2">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Raw readings older than {rawRetentionDays} days are archived as daily summaries.
+                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                      Use the <button onClick={() => setBottomTab('explore')} className="text-blue-600 dark:text-blue-400 hover:underline">Explore Data</button> tab to query historical summaries, or select a range within the last {rawRetentionDays} day{rawRetentionDays !== 1 ? 's' : ''}.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="py-6 text-center text-sm text-slate-400 dark:text-slate-500">No readings in the last {rawRangeLabel}.</p>
+                )}
               </div>
             );
           }

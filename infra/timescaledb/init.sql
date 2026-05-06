@@ -67,45 +67,18 @@ SELECT
   sensor_id,
   site_id,
   organization_id,
-  AVG(COALESCE(
-    (processed_data->>'value')::float,
-    (processed_data->>'temperature')::float,
-    (processed_data->>'humidity')::float,
-    (processed_data->>'pressure')::float,
-    (processed_data->>'voltage')::float,
-    (processed_data->>'current')::float,
-    (processed_data->>'power')::float,
-    (SELECT (value->>0)::float FROM jsonb_each_text(processed_data) WHERE value ~ '^-?[0-9]+\.?[0-9]*$' LIMIT 1)
-  )) AS avg_val,
-  MIN(COALESCE(
-    (processed_data->>'value')::float,
-    (processed_data->>'temperature')::float,
-    (processed_data->>'humidity')::float,
-    (processed_data->>'pressure')::float,
-    (processed_data->>'voltage')::float,
-    (processed_data->>'current')::float,
-    (processed_data->>'power')::float,
-    (SELECT (value->>0)::float FROM jsonb_each_text(processed_data) WHERE value ~ '^-?[0-9]+\.?[0-9]*$' LIMIT 1)
-  )) AS min_val,
-  MAX(COALESCE(
-    (processed_data->>'value')::float,
-    (processed_data->>'temperature')::float,
-    (processed_data->>'humidity')::float,
-    (processed_data->>'pressure')::float,
-    (processed_data->>'voltage')::float,
-    (processed_data->>'current')::float,
-    (processed_data->>'power')::float,
-    (SELECT (value->>0)::float FROM jsonb_each_text(processed_data) WHERE value ~ '^-?[0-9]+\.?[0-9]*$' LIMIT 1)
-  )) AS max_val,
-  COUNT(*)                                 AS sample_count
+  AVG((processed_data->>'value')::float8) AS avg_val,
+  MIN((processed_data->>'value')::float8) AS min_val,
+  MAX((processed_data->>'value')::float8) AS max_val,
+  COUNT(*) AS sample_count
 FROM sensor_readings
-WHERE quality_code IN ('GOOD', 'UNCERTAIN')
-  AND jsonb_typeof(processed_data) = 'object'
+WHERE jsonb_typeof(processed_data) = 'object'
 GROUP BY 1, sensor_id, site_id, organization_id
 WITH NO DATA;
 
+-- Wide start_offset (7 days) so the policy catches up after any gap/restart.
 SELECT add_continuous_aggregate_policy('readings_1h',
-  start_offset      => INTERVAL '3 hours',
+  start_offset      => INTERVAL '7 days',
   end_offset        => INTERVAL '1 hour',
   schedule_interval => INTERVAL '1 hour',
   if_not_exists     => TRUE);
@@ -132,7 +105,7 @@ GROUP BY 1, sensor_id, site_id, organization_id
 WITH NO DATA;
 
 SELECT add_continuous_aggregate_policy('readings_1d',
-  start_offset      => INTERVAL '3 days',
+  start_offset      => INTERVAL '30 days',
   end_offset        => INTERVAL '1 day',
   schedule_interval => INTERVAL '1 day',
   if_not_exists     => TRUE);

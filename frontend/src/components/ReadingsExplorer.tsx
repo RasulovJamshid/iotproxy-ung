@@ -270,6 +270,11 @@ export function ReadingsExplorer({ sensorIds: defaultSensorIds, siteId: defaultS
                   <span className="font-mono text-slate-600 dark:text-slate-300">{meta.dataEnd ? format(new Date(meta.dataEnd), 'MMM d HH:mm') : '—'}</span>
                 </span>
               )}
+              {meta.fromDailySummary && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                  Showing archived daily summaries — raw data was removed by retention
+                </span>
+              )}
               {isFetching && <span className="animate-pulse">Loading…</span>}
             </div>
           )}

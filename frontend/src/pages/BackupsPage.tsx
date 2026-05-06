@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Database, Download, Trash2, RefreshCw, AlertTriangle, CheckCircle2, Clock, HardDrive, ShieldCheck, Play, Eye } from 'lucide-react';
 import { useBackups, useCreateBackup, useDeleteBackup, useRestoreBackup, useDownloadBackup } from '../hooks/useBackups';
 import { useRetentionPreview, useRunRetention, RetentionRunResult } from '../hooks/useRetention';
@@ -252,6 +253,7 @@ export default function BackupsPage() {
                   <p className="text-sm font-medium text-green-900 dark:text-green-100">Retention completed</p>
                   <div className="flex flex-wrap gap-4 text-xs text-green-700 dark:text-green-300">
                     <span>Sensors processed: <strong>{lastRunResult.sensorsProcessed}</strong></span>
+                    <span>Summaries created: <strong>{lastRunResult.summariesCreated}</strong></span>
                     <span>Raw readings deleted: <strong>{lastRunResult.rawReadingsDeleted.toLocaleString()}</strong></span>
                     <span>Summaries purged: <strong>{lastRunResult.summariesPurged.toLocaleString()}</strong></span>
                   </div>
@@ -278,10 +280,10 @@ export default function BackupsPage() {
                 </div>
                 <div className="rounded-lg bg-slate-50 dark:bg-slate-800 p-3">
                   <p className="text-xs text-slate-500 dark:text-slate-400">Raw retention</p>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                  <p className={`text-lg font-semibold mt-0.5 ${retentionPreview.summary.defaultRawRetentionDays ? 'text-slate-900 dark:text-slate-100' : 'text-amber-600 dark:text-amber-400'}`}>
                     {retentionPreview.summary.defaultRawRetentionDays
                       ? `${retentionPreview.summary.defaultRawRetentionDays}d`
-                      : '∞'}
+                      : 'Not set'}
                   </p>
                 </div>
                 <div className="rounded-lg bg-slate-50 dark:bg-slate-800 p-3">
@@ -289,7 +291,7 @@ export default function BackupsPage() {
                   <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
                     {retentionPreview.summary.defaultSummaryRetentionMonths
                       ? `${retentionPreview.summary.defaultSummaryRetentionMonths}mo`
-                      : '∞'}
+                      : '—'}
                   </p>
                 </div>
               </div>
@@ -318,9 +320,21 @@ export default function BackupsPage() {
               )}
 
               {retentionPreview.sensors.length === 0 && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 italic">
-                  No sensors have data exceeding their retention limits — nothing to delete.
-                </p>
+                retentionPreview.summary.defaultRawRetentionDays == null ? (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      No raw retention policy is configured for this organization. Set{' '}
+                      <strong>Raw Retention Days</strong> in{' '}
+                      <Link to="/settings" className="underline hover:no-underline">Settings</Link>{' '}
+                      to enable automatic data cleanup.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                    No sensors have data older than the {retentionPreview.summary.defaultRawRetentionDays}-day retention limit — nothing to delete.
+                  </p>
+                )
               )}
             </div>
           )}

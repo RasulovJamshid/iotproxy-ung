@@ -7,6 +7,10 @@ export interface ReadingsParams {
   endTs: string;
   agg?: 'AVG' | 'MIN' | 'MAX' | 'NONE';
   intervalMs?: number;
+  aggField?: string;
+  /** Sensor's effective raw retention in days — lets the backend fall back to
+   *  daily summaries for ranges that predate the cutoff. */
+  rawRetentionDays?: number | null;
 }
 
 export function useReadings(params: ReadingsParams) {
@@ -19,7 +23,8 @@ export function useReadings(params: ReadingsParams) {
           endTs: params.endTs,
           agg: params.agg ?? 'AVG',
           intervalMs: params.intervalMs ?? 3_600_000,
-          aggField: 'value',
+          aggField: params.aggField ?? 'value',
+          ...(params.rawRetentionDays != null && { rawRetentionDays: params.rawRetentionDays }),
         },
       });
       return data as Array<{ bucket: string; avg_val: number; min_val: number; max_val: number }>;
@@ -101,6 +106,7 @@ export interface SearchMeta {
   returned: number;
   dataStart: string | null;
   dataEnd: string | null;
+  fromDailySummary?: boolean;
 }
 
 export interface SearchReadingsResult {

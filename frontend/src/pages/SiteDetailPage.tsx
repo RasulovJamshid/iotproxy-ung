@@ -230,11 +230,20 @@ export default function SiteDetailPage() {
       {/* Data Sources */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            <Tooltip content="Sensors, business metrics, system events, or any time-series data">
-              <span className="border-b border-dotted border-slate-300 dark:border-slate-600">Data Sources</span>
-            </Tooltip>
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <Tooltip content="Sensors, business metrics, system events, or any time-series data">
+                <span className="border-b border-dotted border-slate-300 dark:border-slate-600">Data Sources</span>
+              </Tooltip>
+            </h3>
+            {(site.defaultRawRetentionDays != null && site.defaultRawRetentionDays > 0) && (
+              <Tooltip content={`Raw readings older than ${site.defaultRawRetentionDays} days are archived as daily summaries. Use "Explore Readings" below to view historical data.`}>
+                <span className="text-xs text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 cursor-default">
+                  {site.defaultRawRetentionDays}d retention
+                </span>
+              </Tooltip>
+            )}
+          </div>
           <button onClick={() => setCreateOpen(true)} className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -290,6 +299,10 @@ export default function SiteDetailPage() {
                             </span>
                           ))}
                         </div>
+                      ) : sensor.lastReadingAt ? (
+                        <Tooltip content="Latest raw reading is not in the recent window — data may have been archived by retention. Click the sensor to explore historical summaries.">
+                          <span className="text-slate-400 dark:text-slate-500 text-xs italic cursor-default">archived</span>
+                        </Tooltip>
                       ) : (
                         <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>
                       )}

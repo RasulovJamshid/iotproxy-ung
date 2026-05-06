@@ -151,23 +151,54 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
       return this.queryRaw(params);
     }
 
-    // Continuous aggregate views only contain data older than their end_offset.
-    // For anything that touches the last hour — or for short ranges where the
-    // overhead of a view scan outweighs a raw table scan — aggregate on raw.
-    if (params.endTs.getTime() > oneHourAgo || rangeMs < sixHours) {
+    // Routing strategy:
+    //
+    // readings_1h / readings_1d are TimescaleDB continuous aggregates. They are
+    // unreliable for "current" data for two reasons:
+    //   1. refresh policy uses a sliding 3-hour window — gaps >3h are never
+    //      backfilled automatically.
+    //   2. the view historically filtered quality_code IN ('GOOD','UNCERTAIN'),
+    //      so any MAINTENANCE/BAD readings are invisible in the view even though
+    //      the raw data is present.
+    //
+    // For ranges up to 30 days we always use aggregateRaw (queries sensor_readings
+    // directly, respects aggField, includes all quality codes, accurate). Raw data
+    // is retained per-sensor for at least rawRetentionDays (default 7 days in this
+    // system) so this is safe for the common chart ranges.
+    //
+    // For ranges > 30 days we fall back to the continuous aggregate views and,
+    // if they return nothing, fall back once more to the application-level daily
+    // summaries so historical data is always available after raw deletion.
+    const thirtyDays = 30 * 86_400_000;
+
+    if (rangeMs <= thirtyDays) {
       return this.aggregateRaw(params);
     }
 
-    if (rangeMs >= sevenDays) {
-      // Spans >7 d but touches the last day → hourly view (daily not yet populated)
-      if (params.endTs.getTime() > oneDayAgo) {
-        return this.queryAggregate('readings_1h', 'bucket', params);
-      }
-      return this.queryAggregate('readings_1d', 'bucket', params);
+    // > 30 days: try continuous aggregate views (may be stale or filtered),
+    // fall back to daily summaries if the view returns nothing.
+    const viewRows = rangeMs >= sevenDays && params.endTs.getTime() <= oneDayAgo
+      ? await this.queryAggregate('readings_1d', 'bucket', params)
+      : await this.queryAggregate('readings_1h', 'bucket', params);
+
+    if (viewRows.length > 0) {
+      return viewRows;
     }
 
-    // 6 h – 7 d, older than 1 h → hourly view
-    return this.queryAggregate('readings_1h', 'bucket', params);
+    // View was empty — try daily summaries as last resort
+    if (params.sensorId) {
+      const summaryRows = await this.queryDailySummary(
+        params.sensorId,
+        params.startTs,
+        params.endTs,
+        params.sortDir ?? 'ASC',
+        params.limit,
+      );
+      if (summaryRows.length > 0) return summaryRows;
+    }
+
+    // Fall back to raw aggregation for the full range
+    return this.aggregateRaw(params);
   }
 
   async getLatestPerSensor(
@@ -312,12 +343,14 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     // then take the first numeric value found anywhere in processed_data.
     // This matches the same logic used by the readings_1h continuous aggregate so
     // manual summaries are consistent with what the chart layer serves.
+    // Every fallback is guarded by a regex CASE WHEN so a non-numeric string
+    // (e.g. "N/A") never reaches the ::double precision cast and throws.
     const result = await this.pool.query(
       `INSERT INTO readings_daily_summary
          (sensor_id, organization_id, day, avg_val, min_val, max_val, latest_val, sum_val, sample_count, agg_field)
        SELECT
-         $1,
-         $2,
+         $1::uuid,
+         $2::uuid,
          date_trunc('day', phenomenon_time)::date AS day,
          AVG(numeric_val)   AS avg_val,
          MIN(numeric_val)   AS min_val,
@@ -330,15 +363,22 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
          SELECT phenomenon_time,
                 COALESCE(
                   CASE WHEN (processed_data->>$3) ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
-                    THEN (processed_data->>$3)::double precision ELSE NULL END,
-                  (processed_data->>'value')::double precision,
-                  (processed_data->>'temperature')::double precision,
-                  (processed_data->>'humidity')::double precision,
-                  (processed_data->>'pressure')::double precision,
-                  (processed_data->>'voltage')::double precision,
-                  (processed_data->>'current')::double precision,
-                  (processed_data->>'power')::double precision,
-                  (SELECT (val)::double precision
+                    THEN (processed_data->>$3)::double precision END,
+                  CASE WHEN (processed_data->>'value') ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>'value')::double precision END,
+                  CASE WHEN (processed_data->>'temperature') ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>'temperature')::double precision END,
+                  CASE WHEN (processed_data->>'humidity') ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>'humidity')::double precision END,
+                  CASE WHEN (processed_data->>'pressure') ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>'pressure')::double precision END,
+                  CASE WHEN (processed_data->>'voltage') ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>'voltage')::double precision END,
+                  CASE WHEN (processed_data->>'current') ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>'current')::double precision END,
+                  CASE WHEN (processed_data->>'power') ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>'power')::double precision END,
+                  (SELECT val::double precision
                    FROM jsonb_each_text(processed_data) AS j(key, val)
                    WHERE val ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
                    LIMIT 1)
@@ -430,7 +470,29 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Decompress any TimescaleDB chunks for sensor_readings that are older than
+   * the given date.  Backfilled historical data lands in time ranges that may
+   * already be compressed; DELETE cannot remove rows from compressed chunks.
+   *
+   * Safe to call even when TimescaleDB compression is not configured — errors
+   * (function not found, no chunks, etc.) are swallowed as no-ops.
+   */
+  async decompressChunksOlderThan(cutoffDate: Date): Promise<void> {
+    try {
+      await this.pool.query(
+        `SELECT decompress_chunk(c, true)
+         FROM show_chunks('sensor_readings', older_than => $1) c`,
+        [cutoffDate],
+      );
+    } catch {
+      // No-op: TimescaleDB not present, compression not enabled, or no chunks in range.
+    }
+  }
+
+  /**
    * Delete raw readings older than the per-sensor retention cutoff.
+   * Only deletes rows whose day already has a summary — call rollupDailySummary
+   * first to guarantee the JIT summary exists before deletion.
    */
   async deleteRawOlderThanPerSensor(sensorId: string, cutoffDate: Date): Promise<number> {
     const result = await this.pool.query(
@@ -450,19 +512,16 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Count how many readings will be deleted for a sensor (retention preview).
+   * Does NOT require pre-existing summary rows — the actual run does a JIT rollup
+   * before deleting, so the preview should reflect the full set of raw readings
+   * that are candidates for deletion, not just those already summarised.
    */
   async countReadingsOlderThan(sensorId: string, cutoffDate: Date): Promise<number> {
     const result = await this.pool.query(
       `SELECT COUNT(*) as count
        FROM sensor_readings r
        WHERE r.sensor_id = $1
-         AND r.phenomenon_time < $2
-         AND EXISTS (
-           SELECT 1
-           FROM readings_daily_summary ds
-           WHERE ds.sensor_id = r.sensor_id
-             AND ds.day = date_trunc('day', r.phenomenon_time)::date
-         )`,
+         AND r.phenomenon_time < $2`,
       [sensorId, cutoffDate],
     );
     return parseInt(result.rows[0]?.count ?? '0', 10);
@@ -605,6 +664,13 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
           ).phenomenon_time
         : null;
 
+      // If raw table returned nothing and we have specific sensor IDs, fall back
+      // to readings_daily_summary (data archived by the retention process).
+      if (total === 0 && params.sensorIds && params.sensorIds.length > 0 && !params.exactTime) {
+        const summary = await this.searchFromDailySummary(params, dir, lim, off, 'raw');
+        if (summary) return summary;
+      }
+
       return {
         data: result.rows,
         meta: {
@@ -655,6 +721,13 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
       args,
     );
 
+    // If raw table returned nothing and we have specific sensor IDs, fall back
+    // to readings_daily_summary (data archived by the retention process).
+    if (total === 0 && params.sensorIds && params.sensorIds.length > 0 && !params.exactTime) {
+      const summary = await this.searchFromDailySummary(params, dir, lim, off, 'agg');
+      if (summary) return summary;
+    }
+
     const dataStart = result.rows.length > 0 ? result.rows[0].bucket : null;
     const dataEnd = result.rows.length > 0 ? result.rows[result.rows.length - 1].bucket : null;
 
@@ -667,6 +740,89 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
         returned: result.rows.length,
         dataStart: dir === 'ASC' ? dataStart : dataEnd,
         dataEnd: dir === 'ASC' ? dataEnd : dataStart,
+      },
+    };
+  }
+
+  private async searchFromDailySummary(
+    params: {
+      organizationId: string;
+      sensorIds?: string[];
+      startTs?: Date;
+      endTs?: Date;
+    },
+    dir: string,
+    lim: number,
+    off: number,
+    mode: 'raw' | 'agg',
+  ) {
+    // Cast $1 to uuid[] so pg's text[] is accepted; $2 uses implicit text→uuid cast
+    const args: unknown[] = [params.sensorIds, params.organizationId];
+    const conditions = ['sensor_id = ANY($1::uuid[])', 'organization_id = $2::uuid'];
+
+    if (params.startTs) {
+      args.push(params.startTs);
+      conditions.push(`day >= $${args.length}::date`);
+    }
+    if (params.endTs) {
+      args.push(params.endTs);
+      conditions.push(`day <= $${args.length}::date`);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    const countRes = await this.pool.query(
+      `SELECT COUNT(*)::int AS total FROM readings_daily_summary WHERE ${whereClause}`,
+      args,
+    );
+    const total: number = countRes.rows[0]?.total ?? 0;
+    if (total === 0) return null;
+
+    args.push(lim, off);
+    const rows = (await this.pool.query(
+      `SELECT sensor_id, day, avg_val, min_val, max_val, sample_count
+       FROM readings_daily_summary
+       WHERE ${whereClause}
+       ORDER BY day ${dir}, sensor_id
+       LIMIT $${args.length - 1} OFFSET $${args.length}`,
+      args,
+    )).rows;
+
+    let data: Record<string, unknown>[];
+    if (mode === 'raw') {
+      data = rows.map((r) => ({
+        sensor_id: r.sensor_id,
+        phenomenon_time: new Date(r.day).toISOString(),
+        processed_data: { avg: r.avg_val, min: r.min_val, max: r.max_val },
+        quality_code: 'SUMMARIZED',
+        pipeline_flags: ['daily_summary'],
+      }));
+    } else {
+      data = rows.map((r) => ({
+        bucket: new Date(r.day).toISOString(),
+        sensor_id: r.sensor_id,
+        avg_val: r.avg_val,
+        min_val: r.min_val,
+        max_val: r.max_val,
+        sum_val: null,
+        sample_count: r.sample_count,
+      }));
+    }
+
+    const times = rows.map((r) => new Date(r.day).getTime());
+    const dataStart = new Date(Math.min(...times)).toISOString();
+    const dataEnd = new Date(Math.max(...times)).toISOString();
+
+    return {
+      data,
+      meta: {
+        total,
+        limit: lim,
+        offset: off,
+        returned: data.length,
+        dataStart: dir === 'ASC' ? dataStart : dataEnd,
+        dataEnd: dir === 'ASC' ? dataEnd : dataStart,
+        fromDailySummary: true,
       },
     };
   }
@@ -784,36 +940,58 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     args.push(Math.min(params.limit ?? 1_000, 10_000));
     const limitPlaceholder = `$${args.length}`;
 
-    let selectAgg: string;
-    let whereAgg = '';
+    // Build a COALESCE expression that:
+    //   1. Tries the sensor's configured aggField first
+    //   2. Falls back to common field names
+    //   3. As last resort, picks the first numeric value found anywhere in the JSONB
+    // This ensures charts work even when aggField is misconfigured or the data
+    // uses non-standard / non-English field names.
+    const numericRegex = `'^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'`;
 
-    if (params.aggField) {
-      // Parameterise the field name via jsonb operator to avoid injection
-      args.push(params.aggField);
-      const fieldParam = `$${args.length}`;
-      selectAgg = `
-        AVG((processed_data->>${fieldParam})::double precision)  AS avg_val,
-        MIN((processed_data->>${fieldParam})::double precision)  AS min_val,
-        MAX((processed_data->>${fieldParam})::double precision)  AS max_val,`;
-      // Only include rows where the field is a valid number
-      whereAgg = `AND (processed_data->>${fieldParam}) ~ '^-?[0-9]+(\\.[0-9]+)?$'`;
-    } else {
-      selectAgg = `
-        NULL::double precision AS avg_val,
-        NULL::double precision AS min_val,
-        NULL::double precision AS max_val,`;
-    }
+    args.push(params.aggField ?? 'value');
+    const fieldParam = `$${args.length}`;
+
+    const numericVal = `
+      COALESCE(
+        CASE WHEN (processed_data->>${fieldParam}) ~ ${numericRegex}
+             THEN (processed_data->>${fieldParam})::double precision END,
+        CASE WHEN (processed_data->>'value') ~ ${numericRegex}
+             THEN (processed_data->>'value')::double precision END,
+        CASE WHEN (processed_data->>'temperature') ~ ${numericRegex}
+             THEN (processed_data->>'temperature')::double precision END,
+        CASE WHEN (processed_data->>'humidity') ~ ${numericRegex}
+             THEN (processed_data->>'humidity')::double precision END,
+        CASE WHEN (processed_data->>'pressure') ~ ${numericRegex}
+             THEN (processed_data->>'pressure')::double precision END,
+        CASE WHEN (processed_data->>'voltage') ~ ${numericRegex}
+             THEN (processed_data->>'voltage')::double precision END,
+        CASE WHEN (processed_data->>'current') ~ ${numericRegex}
+             THEN (processed_data->>'current')::double precision END,
+        CASE WHEN (processed_data->>'power') ~ ${numericRegex}
+             THEN (processed_data->>'power')::double precision END,
+        (SELECT kv.value::double precision
+         FROM jsonb_each_text(processed_data) kv
+         WHERE kv.value ~ ${numericRegex}
+         LIMIT 1)
+      )`;
 
     const result = await this.pool.query(
       `SELECT time_bucket($1::interval, phenomenon_time) AS bucket,
-              ${selectAgg}
-              COUNT(*)::int AS sample_count
-       FROM sensor_readings
-       WHERE sensor_id = $2
-         AND phenomenon_time >= $3
-         AND phenomenon_time <= $4
-         ${qualityClause}
-         ${whereAgg}
+              AVG(numeric_val) AS avg_val,
+              MIN(numeric_val) AS min_val,
+              MAX(numeric_val) AS max_val,
+              COUNT(*)::int    AS sample_count
+       FROM (
+         SELECT phenomenon_time,
+                ${numericVal} AS numeric_val
+         FROM sensor_readings
+         WHERE sensor_id = $2
+           AND phenomenon_time >= $3
+           AND phenomenon_time <= $4
+           ${qualityClause}
+           AND jsonb_typeof(processed_data) = 'object'
+       ) sub
+       WHERE numeric_val IS NOT NULL
        GROUP BY 1
        ORDER BY 1 ${dir}
        LIMIT ${limitPlaceholder}`,
