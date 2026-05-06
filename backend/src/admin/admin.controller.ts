@@ -64,6 +64,12 @@ export class AdminController {
     return this.retention.previewRetention(orgId);
   }
 
+  @Post('organizations/:orgId/retention/run')
+  @Roles('SYSTEM_ADMIN', 'ADMIN')
+  runRetention(@Param('orgId') orgId: string) {
+    return this.retention.runRetentionForOrg(orgId);
+  }
+
   // ── Backup & Restore ──────────────────────────────────────────────────────
 
   @Post('organizations/:orgId/backups')

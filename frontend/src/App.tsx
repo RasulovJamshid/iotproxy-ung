@@ -23,6 +23,7 @@ import HealthPage from './pages/HealthPage';
 import UsersPage from './pages/UsersPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import BackupsPage from './pages/BackupsPage';
+import BackfillPage from './pages/BackfillPage';
 import ServerErrorPage from './pages/ServerErrorPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -70,6 +71,7 @@ const Icons = {
   Orgs:      () => <Icon d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />,
   Database:  () => <Icon d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />,
   Activity:  () => <Icon d="M22 12h-4l-3 9L9 3l-3 9H2" />,
+  Backfill:  () => <Icon d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />,
   Logout:    () => <Icon d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />,
   Menu:      () => <Icon d="M4 6h16M4 12h16M4 18h16" />,
   X:         () => <Icon d="M6 18L18 6M6 6l12 12" />,
@@ -108,6 +110,7 @@ const navGroups: NavGroup[] = [
     heading: 'Data',
     items: [
       { to: '/export',    label: 'Export',    Icon: Icons.Export },
+      { to: '/backfill',  label: 'Backfill',  Icon: Icons.Backfill },
       { to: '/adapters',  label: 'Adapters',  Icon: Icons.Adapters },
       { to: '/api-keys',  label: 'API Keys',  Icon: Icons.Keys },
       { to: '/webhooks',  label: 'Webhooks',  Icon: Icons.Webhooks },
@@ -282,6 +285,7 @@ const pageTitles: Record<string, string> = {
   '/sensor-categories': 'Sensor Categories',
   '/alerts':   'Alerts',
   '/export':   'Export',
+  '/backfill': 'Backfill',
   '/api-keys': 'API Keys',
   '/webhooks': 'Webhooks',
   '/organizations': 'Organizations',
@@ -430,6 +434,7 @@ export default function App() {
                             <Route path="/sensor-categories" element={<SensorCategoriesPage />} />
                             <Route path="/alerts"        element={<AlertsPage />} />
                             <Route path="/export"        element={<ExportPage />} />
+                            <Route path="/backfill"      element={<BackfillPage />} />
                             <Route path="/adapters"      element={<AdaptersPage />} />
                             <Route path="/api-keys"      element={<ApiKeysPage />} />
                             <Route path="/webhooks"      element={<WebhooksPage />} />

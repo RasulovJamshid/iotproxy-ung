@@ -867,7 +867,17 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
               <HelpCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div>
                 <strong>How it works:</strong> IoTProxy will periodically fetch data from the configured URL.
-                Use template variables: <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{lastPollAt}}'}</code>, <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{now}}'}</code>, <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{siteId}}'}</code>
+                Use template variables in the URL, query params, headers, and body:
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{lastPollAt}}'}</code> — previous poll time</div>
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{now}}'}</code> — current time</div>
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{windowStart}}'}</code> — chunk start (backfill)</div>
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{windowEnd}}'}</code> — chunk end (backfill)</div>
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{date}}'}</code> — YYYY-MM-DD of chunk start</div>
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{year}}'}</code> <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{month}}'}</code> <code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{day}}'}</code> — date parts</div>
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{unixStart}}'}</code> — Unix seconds start</div>
+                  <div><code className="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">{'{{unixEnd}}'}</code> — Unix seconds end</div>
+                </div>
               </div>
             </div>
           </div>
@@ -926,7 +936,7 @@ export function PullConfigForm({ siteId, adapter, onTemplateSaved }: Props) {
           <div className="border-t border-gray-200 dark:border-slate-800 pt-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-200 mb-3">Query Parameters</h3>
             <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">
-              Appended to the URL. Supports template variables: <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{'{{now}}'}</code>, <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{'{{lastPollAt}}'}</code>, <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{'{{siteId}}'}</code>
+              Appended to the URL. Supports all template variables listed above (e.g. <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{'{{date}}'}</code>, <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{'{{unixStart}}'}</code>).
             </p>
             <KVEditor
               label="Parameters"

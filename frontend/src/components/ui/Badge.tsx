@@ -28,6 +28,7 @@ const variants: Record<string, { dot: string; text: string; bg: string }> = {
   RUNNING:     { dot: 'bg-blue-400',   text: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-50 dark:bg-blue-900/30'   },
   COMPLETED:   { dot: 'bg-green-500',  text: 'text-green-700 dark:text-green-400',  bg: 'bg-green-50 dark:bg-green-900/30'  },
   FAILED:      { dot: 'bg-red-500',    text: 'text-red-700 dark:text-red-400',    bg: 'bg-red-50 dark:bg-red-900/30'    },
+  CANCELLED:   { dot: 'bg-slate-400',  text: 'text-slate-600 dark:text-slate-400',  bg: 'bg-slate-100 dark:bg-slate-800/50' },
 };
 
 const DISPLAY: Record<string, string> = {
@@ -50,6 +51,7 @@ const DISPLAY: Record<string, string> = {
   RUNNING:     'Running',
   COMPLETED:   'Completed',
   FAILED:      'Failed',
+  CANCELLED:   'Cancelled',
   TRUE:        'Enabled',
   FALSE:       'Disabled',
 };

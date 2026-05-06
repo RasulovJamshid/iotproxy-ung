@@ -24,6 +24,7 @@ import { ConnectivityModule } from './connectivity/connectivity.module';
 import { ExportModule } from './export/export.module';
 import { AdminModule } from './admin/admin.module';
 import { AdaptersModule } from './adapters/adapters.module';
+import { BackfillModule } from './backfill/backfill.module';
 import { HealthModule } from './health/health.module';
 import { QUEUE_NAMES } from '@iotproxy/shared';
 
@@ -78,6 +79,7 @@ import { QUEUE_NAMES } from '@iotproxy/shared';
     ExportModule,
     AdminModule,
     AdaptersModule,
+    BackfillModule,
     HealthModule,
   ],
 })

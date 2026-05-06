@@ -22,6 +22,7 @@ export const QUEUE_NAMES = {
   NOTIFICATIONS: 'notifications',
   EXPORTS:       'exports',
   PULL:          'pull',
+  BACKFILL:      'backfill',
   BACKUPS:       'backups',
 } as const;
 

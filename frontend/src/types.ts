@@ -181,6 +181,35 @@ export interface ExportJob {
   createdAt: string;
 }
 
+export interface BackfillRun {
+  id: string;
+  adapterId: string;
+  organizationId: string;
+  rangeStart: string;
+  rangeEnd: string;
+  chunkSize: string;
+  chunkSizeSec?: number;
+  timestampStrategy: string;
+  timeParams?: {
+    mode?: 'range' | 'single-date';
+    startParamName: string;
+    endParamName: string;
+    dateParamName?: string;
+    format: string;
+    customFormat?: string;
+    location: 'query' | 'body';
+  };
+  status: string;
+  totalChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  totalReadings: number;
+  delayBetweenChunksMs: number;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Reading {
   bucket: string;
   avg_val: number;

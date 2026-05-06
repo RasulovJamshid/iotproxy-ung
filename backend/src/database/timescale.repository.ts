@@ -307,6 +307,11 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     aggField: string,
     cutoffDate: Date,
   ): Promise<number> {
+    // Resolve the numeric value for each reading.
+    // Try the configured aggField first, then fall back through common field names,
+    // then take the first numeric value found anywhere in processed_data.
+    // This matches the same logic used by the readings_1h continuous aggregate so
+    // manual summaries are consistent with what the chart layer serves.
     const result = await this.pool.query(
       `INSERT INTO readings_daily_summary
          (sensor_id, organization_id, day, avg_val, min_val, max_val, latest_val, sum_val, sample_count, agg_field)
@@ -314,18 +319,36 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
          $1,
          $2,
          date_trunc('day', phenomenon_time)::date AS day,
-         AVG((processed_data->>$3)::double precision)   AS avg_val,
-         MIN((processed_data->>$3)::double precision)   AS min_val,
-         MAX((processed_data->>$3)::double precision)   AS max_val,
-         (array_agg((processed_data->>$3)::double precision ORDER BY phenomenon_time DESC))[1] AS latest_val,
-         SUM((processed_data->>$3)::double precision)   AS sum_val,
-         COUNT(*)::int                                   AS sample_count,
-         $3
-       FROM sensor_readings
-       WHERE sensor_id = $1
-         AND organization_id = $2
-         AND phenomenon_time < $4
-         AND (processed_data->>$3) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+         AVG(numeric_val)   AS avg_val,
+         MIN(numeric_val)   AS min_val,
+         MAX(numeric_val)   AS max_val,
+         (array_agg(numeric_val ORDER BY phenomenon_time DESC))[1] AS latest_val,
+         SUM(numeric_val)   AS sum_val,
+         COUNT(*)::int      AS sample_count,
+         $3                 AS agg_field
+       FROM (
+         SELECT phenomenon_time,
+                COALESCE(
+                  CASE WHEN (processed_data->>$3) ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                    THEN (processed_data->>$3)::double precision ELSE NULL END,
+                  (processed_data->>'value')::double precision,
+                  (processed_data->>'temperature')::double precision,
+                  (processed_data->>'humidity')::double precision,
+                  (processed_data->>'pressure')::double precision,
+                  (processed_data->>'voltage')::double precision,
+                  (processed_data->>'current')::double precision,
+                  (processed_data->>'power')::double precision,
+                  (SELECT (val)::double precision
+                   FROM jsonb_each_text(processed_data) AS j(key, val)
+                   WHERE val ~ '^-?[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?$'
+                   LIMIT 1)
+                ) AS numeric_val
+         FROM sensor_readings
+         WHERE sensor_id = $1
+           AND organization_id = $2
+           AND phenomenon_time < $4
+       ) sub
+       WHERE numeric_val IS NOT NULL
        GROUP BY date_trunc('day', phenomenon_time)::date
        ON CONFLICT (sensor_id, day) DO UPDATE SET
          avg_val      = EXCLUDED.avg_val,

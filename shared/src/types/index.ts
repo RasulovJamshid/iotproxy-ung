@@ -84,6 +84,64 @@ export type ExportFormat = 'csv' | 'parquet';
 
 export type ExportStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 
+// ── Backfill ─────────────────────────────────────────────────────────────────
+
+/** How large each fetch window is when splitting a historical range */
+export type BackfillChunkSize = 'hour' | 'day' | 'week' | 'month' | 'custom';
+
+/**
+ * How phenomenonTime is assigned when the external API returns readings
+ * without timestamps.
+ *
+ * - window-start  : all readings in the window get windowStart
+ * - window-mid    : all readings get the midpoint of the window
+ * - window-end    : all readings get windowEnd
+ * - sequence      : readings are distributed evenly across the window
+ * - from-response : use the timestamp the API returned (falls back to window-mid)
+ */
+export type BackfillTimestampStrategy =
+  | 'window-start'
+  | 'window-mid'
+  | 'window-end'
+  | 'sequence'
+  | 'from-response';
+
+/**
+ * How the window start/end are injected into the API request.
+ * This is stored on BackfillRun and takes priority over the adapter's
+ * pullTimeParams, because many adapters are configured without time params
+ * (the API returns current-day data by default).
+ */
+export interface BackfillTimeParams {
+  /**
+   * 'range'       — inject both a start and an end parameter per window (default).
+   * 'single-date' — inject one parameter whose value is the window start date.
+   *                 Use this when the API accepts a single date (e.g. ?date=2024-01-15).
+   */
+  mode?: 'range' | 'single-date';
+  /** Range mode: parameter name for the window start */
+  startParamName: string;
+  /** Range mode: parameter name for the window end */
+  endParamName: string;
+  /** Single-date mode: the single date parameter name (e.g. 'date') */
+  dateParamName?: string;
+  format: TimeFormat;
+  customFormat?: string;
+  location: 'query' | 'body';
+}
+
+/** BullMQ job data for a single backfill chunk */
+export interface BackfillChunkJob {
+  runId: string;
+  adapterId: string;
+  organizationId: string;
+  windowStart: string; // ISO-8601
+  windowEnd: string;   // ISO-8601
+  chunkIndex: number;
+  totalChunks: number;
+  timestampStrategy: BackfillTimestampStrategy;
+}
+
 export type UserRole = 'SYSTEM_ADMIN' | 'ADMIN' | 'USER' | 'VIEWER';
 
 // ── Core reading types ───────────────────────────────────────────────────────

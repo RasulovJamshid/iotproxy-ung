@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Database, Download, Trash2, RefreshCw, AlertTriangle, CheckCircle2, Clock, HardDrive } from 'lucide-react';
+import { Database, Download, Trash2, RefreshCw, AlertTriangle, CheckCircle2, Clock, HardDrive, ShieldCheck, Play, Eye } from 'lucide-react';
 import { useBackups, useCreateBackup, useDeleteBackup, useRestoreBackup, useDownloadBackup } from '../hooks/useBackups';
+import { useRetentionPreview, useRunRetention, RetentionRunResult } from '../hooks/useRetention';
 import { useAuth } from '../contexts/AuthContext';
 import { PageSpinner } from '../components/ui/Spinner';
 import { Modal } from '../components/ui/Modal';
@@ -20,6 +21,13 @@ export default function BackupsPage() {
   const [backupType, setBackupType] = useState<'FULL' | 'INCREMENTAL'>('FULL');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [restoreId, setRestoreId] = useState<string | null>(null);
+
+  // Retention state
+  const [previewEnabled, setPreviewEnabled] = useState(false);
+  const [retentionConfirmOpen, setRetentionConfirmOpen] = useState(false);
+  const [lastRunResult, setLastRunResult] = useState<RetentionRunResult | null>(null);
+  const { data: retentionPreview, isFetching: previewFetching } = useRetentionPreview(orgId!, previewEnabled);
+  const runRetention = useRunRetention();
 
   const isSysAdmin = user?.role === 'SYSTEM_ADMIN';
   const isAdmin = user?.role === 'ADMIN' || isSysAdmin;
@@ -46,6 +54,13 @@ export default function BackupsPage() {
   const handleDownload = async (backupId: string) => {
     if (!orgId) return;
     await downloadBackup.mutateAsync({ orgId, id: backupId });
+  };
+
+  const handleRunRetention = async () => {
+    if (!orgId) return;
+    const result = await runRetention.mutateAsync({ orgId });
+    setLastRunResult(result);
+    setRetentionConfirmOpen(false);
   };
 
   if (isLoading) return <PageSpinner />;
@@ -196,6 +211,122 @@ export default function BackupsPage() {
         )}
       </div>
 
+      {/* Data Retention Section */}
+      <div className="card-flush">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Data Retention</h3>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPreviewEnabled(true)}
+                disabled={previewFetching}
+                className="btn-secondary text-xs py-1 px-3 flex items-center gap-1.5"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                {previewFetching ? 'Loading…' : 'Preview'}
+              </button>
+              <button
+                onClick={() => setRetentionConfirmOpen(true)}
+                className="btn-primary text-xs py-1 px-3 flex items-center gap-1.5"
+              >
+                <Play className="w-3.5 h-3.5" /> Run Now
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Retention runs automatically at 02:00 UTC each night. Use "Run Now" to trigger an immediate enforcement for this organization.
+          </p>
+
+          {/* Last run result */}
+          {lastRunResult && (
+            <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-green-900 dark:text-green-100">Retention completed</p>
+                  <div className="flex flex-wrap gap-4 text-xs text-green-700 dark:text-green-300">
+                    <span>Sensors processed: <strong>{lastRunResult.sensorsProcessed}</strong></span>
+                    <span>Raw readings deleted: <strong>{lastRunResult.rawReadingsDeleted.toLocaleString()}</strong></span>
+                    <span>Summaries purged: <strong>{lastRunResult.summariesPurged.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Preview results */}
+          {retentionPreview && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-lg bg-slate-50 dark:bg-slate-800 p-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Sensors affected</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                    {retentionPreview.summary.totalSensors}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 dark:bg-slate-800 p-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Raw readings to delete</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                    {retentionPreview.summary.totalReadingsToDelete.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 dark:bg-slate-800 p-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Raw retention</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                    {retentionPreview.summary.defaultRawRetentionDays
+                      ? `${retentionPreview.summary.defaultRawRetentionDays}d`
+                      : '∞'}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 dark:bg-slate-800 p-3">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Summary retention</p>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                    {retentionPreview.summary.defaultSummaryRetentionMonths
+                      ? `${retentionPreview.summary.defaultSummaryRetentionMonths}mo`
+                      : '∞'}
+                  </p>
+                </div>
+              </div>
+
+              {retentionPreview.sensors.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                  <table className="w-full text-xs">
+                    <thead className="table-header">
+                      <tr>
+                        <th className="table-th">Sensor ID</th>
+                        <th className="table-th">Cutoff Date</th>
+                        <th className="table-th text-right">Readings to Delete</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {retentionPreview.sensors.map((s) => (
+                        <tr key={s.sensorId} className="table-row">
+                          <td className="table-td font-mono text-slate-600 dark:text-slate-400">{s.sensorId}</td>
+                          <td className="table-td">{new Date(s.cutoffDate).toLocaleDateString()}</td>
+                          <td className="table-td text-right font-medium">{s.readingsToDelete.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {retentionPreview.sensors.length === 0 && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                  No sensors have data exceeding their retention limits — nothing to delete.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Create Backup Modal */}
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create Backup" width="max-w-md">
         <form onSubmit={handleCreate} className="space-y-4">
@@ -247,6 +378,45 @@ export default function BackupsPage() {
             <button onClick={() => setDeleteId(null)} className="btn-secondary">Cancel</button>
             <button onClick={handleDelete} disabled={deleteBackup.isPending} className="btn-danger">
               {deleteBackup.isPending ? 'Deleting…' : 'Delete Backup'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Retention Run Confirmation */}
+      <Modal open={retentionConfirmOpen} onClose={() => setRetentionConfirmOpen(false)} title="Run Retention Now" width="max-w-md">
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Permanent deletion</p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  Raw readings older than each sensor's retention limit will be permanently deleted and cannot be recovered.
+                  Daily summaries will be created first to preserve aggregated history.
+                </p>
+              </div>
+            </div>
+          </div>
+          {retentionPreview && retentionPreview.summary.totalReadingsToDelete > 0 && (
+            <p className="text-sm text-slate-700 dark:text-slate-300">
+              Based on the preview,{' '}
+              <strong>{retentionPreview.summary.totalReadingsToDelete.toLocaleString()}</strong> raw readings
+              across <strong>{retentionPreview.summary.totalSensors}</strong> sensors will be deleted.
+            </p>
+          )}
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Are you sure you want to run retention enforcement now?
+          </p>
+          {runRetention.error && (
+            <p className="text-sm text-red-600">
+              {(runRetention.error as any)?.response?.data?.message ?? 'Retention run failed'}
+            </p>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <button onClick={() => setRetentionConfirmOpen(false)} className="btn-secondary">Cancel</button>
+            <button onClick={handleRunRetention} disabled={runRetention.isPending} className="btn-danger">
+              {runRetention.isPending ? 'Running…' : 'Run Retention'}
             </button>
           </div>
         </div>

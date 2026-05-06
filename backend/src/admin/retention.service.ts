@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -103,6 +103,62 @@ export class RetentionService {
     }
 
     this.logger.log('Nightly retention enforcement complete');
+  }
+
+  async runRetentionForOrg(organizationId: string): Promise<{
+    sensorsProcessed: number;
+    rawReadingsDeleted: number;
+    summariesPurged: number;
+  }> {
+    const org = await this.orgs.findOne({
+      where: { id: organizationId },
+      select: ['id', 'rawRetentionDays', 'defaultRawRetentionDays', 'defaultSummaryRetentionMonths'],
+    });
+    if (!org) throw new NotFoundException(`Organization ${organizationId} not found`);
+
+    const defaultDays = org.defaultRawRetentionDays ?? 0;
+    const sensors = await this.timescale.getSensorsNeedingRollup(organizationId, defaultDays);
+    let rawReadingsDeleted = 0;
+
+    for (const { sensorId, aggField, cutoffDate } of sensors) {
+      try {
+        await this.timescale.rollupDailySummary(sensorId, org.id, aggField, cutoffDate);
+      } catch (err) {
+        this.logger.error(
+          `On-demand rollup failed for sensor ${sensorId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+      try {
+        const deleted = await this.timescale.deleteRawOlderThanPerSensor(sensorId, cutoffDate);
+        rawReadingsDeleted += deleted;
+      } catch (err) {
+        this.logger.error(
+          `Raw retention failed for sensor ${sensorId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+    }
+
+    let summariesPurged = 0;
+    const summaryMonths = org.defaultSummaryRetentionMonths;
+    if (summaryMonths && summaryMonths > 0) {
+      try {
+        summariesPurged = await this.timescale.purgeSummariesOlderThan(organizationId, summaryMonths);
+      } catch (err) {
+        this.logger.error(
+          `Summary retention failed for org ${organizationId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+    }
+
+    this.logger.log(
+      `Manual retention run for org ${organizationId}: ` +
+      `${sensors.length} sensors, ${rawReadingsDeleted} raw deleted, ${summariesPurged} summaries purged`,
+    );
+
+    return { sensorsProcessed: sensors.length, rawReadingsDeleted, summariesPurged };
   }
 
   async setRetention(organizationId: string, days: number) {

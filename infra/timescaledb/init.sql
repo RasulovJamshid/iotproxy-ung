@@ -43,22 +43,18 @@ CREATE INDEX IF NOT EXISTS idx_readings_org_time
   ON sensor_readings (organization_id, phenomenon_time DESC);
 
 -- ── Compression ──────────────────────────────────────────────────────────────
+-- Compression is intentionally NOT enabled on sensor_readings.
+-- The application uses row-level DELETE in deleteRawOlderThanPerSensor with a
+-- safety check (only deletes rows that have a daily summary). Compressed chunks
+-- require full decompression before row-level DML, which causes severe
+-- performance problems and can lead to data loss when combined with per-sensor
+-- retention policies. Compression is handled at the storage layer instead.
 
-ALTER TABLE sensor_readings SET (
-  timescaledb.compress,
-  timescaledb.compress_segmentby = 'sensor_id',
-  timescaledb.compress_orderby   = 'phenomenon_time DESC'
-);
-
-SELECT add_compression_policy('sensor_readings',
-  compress_after => INTERVAL '7 days',
-  if_not_exists  => TRUE);
-
--- ── Default retention (90 days raw; per-org enforcement via nightly cron) ────
-
-SELECT add_retention_policy('sensor_readings',
-  drop_after    => INTERVAL '90 days',
-  if_not_exists => TRUE);
+-- ── Native TimescaleDB retention ─────────────────────────────────────────────
+-- Do NOT add a native retention policy here. The application enforces retention
+-- per-sensor via nightly cron (rollup → safety-checked delete). A native policy
+-- would drop entire chunks without creating daily summaries first, causing data
+-- loss of the aggregated history.
 
 -- ── Continuous aggregate: hourly ─────────────────────────────────────────────
 -- Aggregates the first numeric value found in processed_data JSONB
