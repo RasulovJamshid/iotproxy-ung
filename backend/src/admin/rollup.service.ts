@@ -21,7 +21,7 @@ export class RollupService {
 
     const orgs = await this.orgs.find({
       where: { isActive: true },
-      select: ['id', 'defaultRawRetentionDays'],
+      select: ['id', 'defaultRawRetentionDays', 'defaultSummaryAggMode'],
     });
 
     let totalRolled = 0;
@@ -30,11 +30,12 @@ export class RollupService {
       // Always run — the SQL uses NULLIF to treat 0 as unlimited and
       // excludes sensors whose effective retention is NULL (all levels unlimited).
       const defaultDays = org.defaultRawRetentionDays ?? 0;
+      const defaultAggMode = org.defaultSummaryAggMode ?? 'AVG';
 
       try {
-        const sensors = await this.timescale.getSensorsNeedingRollup(org.id, defaultDays);
+        const sensors = await this.timescale.getSensorsNeedingRollup(org.id, defaultDays, defaultAggMode);
 
-        for (const { sensorId, aggField, cutoffDate } of sensors) {
+        for (const { sensorId, aggField, aggMode, cutoffDate } of sensors) {
           try {
             const rolled = await this.timescale.rollupDailySummary(
               sensorId,

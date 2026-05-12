@@ -26,6 +26,7 @@ export class RetentionService {
         'rawRetentionDays',
         'defaultRawRetentionDays',
         'defaultSummaryRetentionMonths',
+        'defaultSummaryAggMode',
       ],
     });
 
@@ -34,8 +35,9 @@ export class RetentionService {
       // Always run — the SQL uses NULLIF to treat 0 as unlimited and
       // excludes sensors whose effective retention is NULL (all levels unlimited).
       const defaultDays = org.defaultRawRetentionDays ?? 0;
+      const defaultAggMode = org.defaultSummaryAggMode ?? 'AVG';
       try {
-        const sensors = await this.timescale.getSensorsNeedingRollup(org.id, defaultDays);
+        const sensors = await this.timescale.getSensorsNeedingRollup(org.id, defaultDays, defaultAggMode);
         let totalDeleted = 0;
 
         if (sensors.length > 0) {
@@ -46,7 +48,7 @@ export class RetentionService {
           await this.timescale.decompressChunksOlderThan(earliestCutoff);
         }
 
-        for (const { sensorId, aggField, cutoffDate } of sensors) {
+        for (const { sensorId, aggField, aggMode, cutoffDate } of sensors) {
           // Just-in-time rollup to guarantee summaries exist prior to purge
           try {
             const rolled = await this.timescale.rollupDailySummary(
@@ -91,22 +93,34 @@ export class RetentionService {
         );
       }
 
-      // ── 2. Summary retention purge ────────────────────────────────────
-      const summaryMonths = org.defaultSummaryRetentionMonths;
-      if (summaryMonths && summaryMonths > 0) {
-        try {
-          const purged = await this.timescale.purgeSummariesOlderThan(org.id, summaryMonths);
-          if (purged > 0) {
-            this.logger.log(
-              `Retention: purged ${purged} daily summaries for org ${org.id} (>${summaryMonths} months)`,
+      // ── 2. Per-sensor summary retention purge ─────────────────────────
+      const summaryMonths = org.defaultSummaryRetentionMonths ?? 0;
+      try {
+        const summaries = await this.timescale.getSensorsNeedingSummaryPurge(org.id, summaryMonths);
+        let totalPurged = 0;
+
+        for (const { sensorId, cutoffDate } of summaries) {
+          try {
+            const purged = await this.timescale.deleteSummariesOlderThanPerSensor(sensorId, cutoffDate);
+            totalPurged += purged;
+          } catch (err) {
+            this.logger.error(
+              `Summary retention failed for sensor ${sensorId}`,
+              err instanceof Error ? err.stack : String(err),
             );
           }
-        } catch (err) {
-          this.logger.error(
-            `Summary retention failed for org ${org.id}`,
-            err instanceof Error ? err.stack : String(err),
+        }
+
+        if (totalPurged > 0) {
+          this.logger.log(
+            `Retention: purged ${totalPurged} daily summaries for org ${org.id}`,
           );
         }
+      } catch (err) {
+        this.logger.error(
+          `Summary retention query failed for org ${org.id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
     }
 
@@ -121,12 +135,13 @@ export class RetentionService {
   }> {
     const org = await this.orgs.findOne({
       where: { id: organizationId },
-      select: ['id', 'rawRetentionDays', 'defaultRawRetentionDays', 'defaultSummaryRetentionMonths'],
+      select: ['id', 'rawRetentionDays', 'defaultRawRetentionDays', 'defaultSummaryRetentionMonths', 'defaultSummaryAggMode'],
     });
     if (!org) throw new NotFoundException(`Organization ${organizationId} not found`);
 
     const defaultDays = org.defaultRawRetentionDays ?? 0;
-    const sensors = await this.timescale.getSensorsNeedingRollup(organizationId, defaultDays);
+    const defaultAggMode = org.defaultSummaryAggMode ?? 'AVG';
+    const sensors = await this.timescale.getSensorsNeedingRollup(organizationId, defaultDays, defaultAggMode);
 
     // Decompress any TimescaleDB chunks that overlap the retention window before
     // attempting per-row DELETE — compressed chunks silently return 0 deleted rows.
@@ -141,7 +156,7 @@ export class RetentionService {
     let rawReadingsDeleted = 0;
     let summariesCreated = 0;
 
-    for (const { sensorId, aggField, cutoffDate } of sensors) {
+    for (const { sensorId, aggField, aggMode, cutoffDate } of sensors) {
       try {
         const rolled = await this.timescale.rollupDailySummary(sensorId, org.id, aggField, cutoffDate);
         summariesCreated += rolled;
@@ -163,16 +178,25 @@ export class RetentionService {
     }
 
     let summariesPurged = 0;
-    const summaryMonths = org.defaultSummaryRetentionMonths;
-    if (summaryMonths && summaryMonths > 0) {
-      try {
-        summariesPurged = await this.timescale.purgeSummariesOlderThan(organizationId, summaryMonths);
-      } catch (err) {
-        this.logger.error(
-          `Summary retention failed for org ${organizationId}`,
-          err instanceof Error ? err.stack : String(err),
-        );
+    const summaryMonths = org.defaultSummaryRetentionMonths ?? 0;
+    try {
+      const summaries = await this.timescale.getSensorsNeedingSummaryPurge(organizationId, summaryMonths);
+      for (const { sensorId, cutoffDate } of summaries) {
+        try {
+          const purged = await this.timescale.deleteSummariesOlderThanPerSensor(sensorId, cutoffDate);
+          summariesPurged += purged;
+        } catch (err) {
+          this.logger.error(
+            `Summary retention failed for sensor ${sensorId}`,
+            err instanceof Error ? err.stack : String(err),
+          );
+        }
       }
+    } catch (err) {
+      this.logger.error(
+        `Summary retention query failed for org ${organizationId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
 
     this.logger.log(

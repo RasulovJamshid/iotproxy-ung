@@ -429,6 +429,7 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Purge daily summaries older than a given number of months for an org.
+   * @deprecated Use purgeSummariesPerSensor instead to respect per-sensor retention settings.
    */
   async purgeSummariesOlderThan(organizationId: string, months: number): Promise<number> {
     const result = await this.pool.query(
@@ -441,16 +442,58 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Get all sensors that have summaries older than their retention cutoff.
+   * Respects the hierarchy: sensor.summaryRetentionMonths → site.defaultSummaryRetentionMonths → org.defaultSummaryRetentionMonths
+   */
+  async getSensorsNeedingSummaryPurge(
+    organizationId: string,
+    defaultSummaryRetentionMonths: number,
+  ): Promise<Array<{ sensorId: string; cutoffDate: Date }>> {
+    const result = await this.pool.query(
+      `SELECT DISTINCT s.id AS sensor_id,
+              (CURRENT_DATE - make_interval(months => COALESCE(NULLIF(s.summary_retention_months, 0), NULLIF(si.default_summary_retention_months, 0), NULLIF($2, 0)))) AS cutoff_date
+       FROM sensors s
+       JOIN sites si ON si.id = s.site_id
+       JOIN readings_daily_summary ds ON ds.sensor_id = s.id
+       WHERE s.organization_id = $1
+         AND s.deleted_at IS NULL
+         AND COALESCE(NULLIF(s.summary_retention_months, 0), NULLIF(si.default_summary_retention_months, 0), NULLIF($2, 0)) IS NOT NULL
+         AND ds.day < (CURRENT_DATE - make_interval(months => COALESCE(NULLIF(s.summary_retention_months, 0), NULLIF(si.default_summary_retention_months, 0), NULLIF($2, 0))))
+       LIMIT 10000`,
+      [organizationId, defaultSummaryRetentionMonths],
+    );
+    return result.rows.map((r: any) => ({
+      sensorId: r.sensor_id,
+      cutoffDate: new Date(r.cutoff_date),
+    }));
+  }
+
+  /**
+   * Delete daily summaries older than the per-sensor retention cutoff.
+   */
+  async deleteSummariesOlderThanPerSensor(sensorId: string, cutoffDate: Date): Promise<number> {
+    const result = await this.pool.query(
+      `DELETE FROM readings_daily_summary
+       WHERE sensor_id = $1
+         AND day < $2`,
+      [sensorId, cutoffDate],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  /**
    * Get all sensor IDs that have raw readings older than their retention cutoff
    * (i.e. readings that need to be rolled up before deletion).
    */
   async getSensorsNeedingRollup(
     organizationId: string,
     defaultRawRetentionDays: number,
-  ): Promise<Array<{ sensorId: string; aggField: string; cutoffDate: Date }>> {
+    defaultSummaryAggMode = 'AVG',
+  ): Promise<Array<{ sensorId: string; aggField: string; aggMode: string; cutoffDate: Date }>> {
     const result = await this.pool.query(
       `SELECT DISTINCT s.id AS sensor_id,
               COALESCE(s.agg_field, 'value') AS agg_field,
+              COALESCE(s.summary_agg_mode, si.default_summary_agg_mode, $3, 'AVG') AS agg_mode,
               (CURRENT_DATE - make_interval(days => COALESCE(NULLIF(s.raw_retention_days, 0), NULLIF(si.default_raw_retention_days, 0), NULLIF($2, 0)))) AS cutoff_date
        FROM sensors s
        JOIN sites si ON si.id = s.site_id
@@ -460,11 +503,12 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
          AND COALESCE(NULLIF(s.raw_retention_days, 0), NULLIF(si.default_raw_retention_days, 0), NULLIF($2, 0)) IS NOT NULL
          AND sr.phenomenon_time < (CURRENT_DATE - make_interval(days => COALESCE(NULLIF(s.raw_retention_days, 0), NULLIF(si.default_raw_retention_days, 0), NULLIF($2, 0))))
        LIMIT 10000`,
-      [organizationId, defaultRawRetentionDays],
+      [organizationId, defaultRawRetentionDays, defaultSummaryAggMode],
     );
     return result.rows.map((r: any) => ({
       sensorId: r.sensor_id,
       aggField: r.agg_field,
+      aggMode: r.agg_mode,
       cutoffDate: new Date(r.cutoff_date),
     }));
   }
