@@ -710,9 +710,20 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
       // If raw table returned nothing and we have specific sensor IDs, fall back
       // to readings_daily_summary (data archived by the retention process).
-      if (total === 0 && params.sensorIds && params.sensorIds.length > 0 && !params.exactTime) {
+      // Also check if the query start date is older than typical retention (7 days)
+      // to catch cases where SOME raw data exists (e.g., today) but older data is archived.
+      const shouldCheckSummaries = params.sensorIds && params.sensorIds.length > 0 && !params.exactTime;
+      const querySpansRetention = params.startTs && (Date.now() - params.startTs.getTime()) > 7 * 86_400_000;
+      
+      if (shouldCheckSummaries && (total === 0 || querySpansRetention)) {
         const summary = await this.searchFromDailySummary(params, dir, lim, off, 'raw');
-        if (summary) return summary;
+        if (summary) {
+          // If we have both raw and summary data, we should ideally merge them,
+          // but for now return summary data if the query spans retention period
+          if (total === 0 || querySpansRetention) {
+            return summary;
+          }
+        }
       }
 
       return {
@@ -767,9 +778,17 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
     // If raw table returned nothing and we have specific sensor IDs, fall back
     // to readings_daily_summary (data archived by the retention process).
-    if (total === 0 && params.sensorIds && params.sensorIds.length > 0 && !params.exactTime) {
+    // Also check if the query start date is older than typical retention (7 days).
+    const shouldCheckSummaries = params.sensorIds && params.sensorIds.length > 0 && !params.exactTime;
+    const querySpansRetention = params.startTs && (Date.now() - params.startTs.getTime()) > 7 * 86_400_000;
+    
+    if (shouldCheckSummaries && (total === 0 || querySpansRetention)) {
       const summary = await this.searchFromDailySummary(params, dir, lim, off, 'agg');
-      if (summary) return summary;
+      if (summary) {
+        if (total === 0 || querySpansRetention) {
+          return summary;
+        }
+      }
     }
 
     const dataStart = result.rows.length > 0 ? result.rows[0].bucket : null;
