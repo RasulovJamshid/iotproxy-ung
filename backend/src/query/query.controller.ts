@@ -12,6 +12,8 @@ import { PERMISSIONS } from '@iotproxy/shared';
 import { canRead, canQuery } from '../auth/permission.helpers';
 import { TimescaleRepository, ALLOWED_AGG } from '../database/timescale.repository';
 import { SensorsService } from '../sensors/sensors.service';
+import { SitesService } from '../sites/sites.service';
+import { OrganizationsService } from '../organizations/organizations.service';
 
 @ApiTags('query')
 @ApiBearerAuth('jwt')
@@ -22,6 +24,8 @@ export class QueryController {
   constructor(
     private timescale: TimescaleRepository,
     private sensors: SensorsService,
+    private sites: SitesService,
+    private orgs: OrganizationsService,
   ) {}
 
   /**
@@ -107,6 +111,23 @@ export class QueryController {
       throw new UnauthorizedException('Sensor not accessible with this API key');
     }
 
+    // Compute effective raw retention: sensor → site → org default
+    let effectiveRawRetentionDays: number | undefined = sensor.rawRetentionDays ?? undefined;
+    try {
+      if (effectiveRawRetentionDays == null && sensor.siteId) {
+        const site = await this.sites.findOne(sensor.siteId, organizationId);
+        if (site?.defaultRawRetentionDays != null) {
+          effectiveRawRetentionDays = site.defaultRawRetentionDays ?? undefined;
+        }
+      }
+      if (effectiveRawRetentionDays == null) {
+        const orgEntity = await this.orgs.findOne(organizationId);
+        if (orgEntity?.defaultRawRetentionDays != null) {
+          effectiveRawRetentionDays = orgEntity.defaultRawRetentionDays ?? undefined;
+        }
+      }
+    } catch {}
+
     return this.timescale.queryTimeSeries({
       sensorId,
       startTs: start,
@@ -118,7 +139,7 @@ export class QueryController {
       sortDir:     (sortDir as 'ASC' | 'DESC') ?? 'DESC',
       minQuality:  parsedMinQuality,
       aggField:    aggField || sensor.aggField || 'value',
-      rawRetentionDays: sensor.rawRetentionDays ?? undefined,
+      rawRetentionDays: effectiveRawRetentionDays,
     });
   }
 

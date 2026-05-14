@@ -2,11 +2,13 @@ import { Module } from '@nestjs/common';
 import { QueryController } from './query.controller';
 import { ReadingsGateway } from './readings.gateway';
 import { SensorsModule } from '../sensors/sensors.module';
+import { SitesModule } from '../sites/sites.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { AuthModule } from '../auth/auth.module';
 import { ApiKeysModule } from '../api-keys/api-keys.module';
 
 @Module({
-  imports: [SensorsModule, AuthModule, ApiKeysModule],
+  imports: [SensorsModule, SitesModule, OrganizationsModule, AuthModule, ApiKeysModule],
   controllers: [QueryController],
   providers: [ReadingsGateway],
   exports: [ReadingsGateway],
