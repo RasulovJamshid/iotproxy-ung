@@ -31,7 +31,7 @@ export class QueryController {
   @Get('readings/:sensorId')
   @ApiQuery({ name: 'startTs', required: true,  type: String, description: 'ISO 8601 start timestamp (inclusive)' })
   @ApiQuery({ name: 'endTs',   required: true,  type: String, description: 'ISO 8601 end timestamp (inclusive)' })
-  @ApiQuery({ name: 'agg',      enum: ['AVG','MIN','MAX','SUM','COUNT','NONE'], required: false })
+  @ApiQuery({ name: 'agg',      enum: ['AVG','MIN','MAX','SUM','LATEST','COUNT','NONE'], required: false })
   @ApiQuery({ name: 'intervalMs', type: Number, required: false, description: 'Bucket width in ms for aggregated queries' })
   @ApiQuery({ name: 'limit',    type: Number,   required: false, description: 'Max rows returned (capped at 10 000)' })
   @ApiQuery({ name: 'cursor',   type: String,   required: false, description: 'Keyset cursor: ISO timestamp of last seen row' })
@@ -58,6 +58,7 @@ export class QueryController {
     if (org && !canQuery(org)) {
       throw new UnauthorizedException('API key lacks query permission');
     }
+
 
     // ── Validate required timestamps ─────────────────────────────────────
     if (!startTs || !endTs) throw new BadRequestException('startTs and endTs are required');
@@ -119,6 +120,46 @@ export class QueryController {
       aggField:    aggField || sensor.aggField || 'value',
       rawRetentionDays: sensor.rawRetentionDays ?? undefined,
     });
+  }
+
+  /**
+   * Daily summaries for a single sensor from readings_daily_summary.
+   * Useful for charts covering historical ranges beyond raw retention.
+   */
+  @Get('readings/:sensorId/summary/daily')
+  @ApiQuery({ name: 'startTs', required: true,  type: String, description: 'ISO 8601 start date (inclusive)' })
+  @ApiQuery({ name: 'endTs',   required: true,  type: String, description: 'ISO 8601 end date (inclusive)' })
+  @ApiQuery({ name: 'sortDir', enum: ['ASC', 'DESC'], required: false, description: 'Sort direction (default ASC)' })
+  @ApiQuery({ name: 'limit',   type: Number, required: false, description: 'Max rows (capped at 10 000)' })
+  async getDailySummary(
+    @Param('sensorId', ParseUUIDPipe) sensorId: string,
+    @Query('startTs') startTs: string,
+    @Query('endTs') endTs: string,
+    @Query('sortDir') sortDir?: string,
+    @Query('limit') limit?: string,
+    @CurrentUser() user?: AuthUser,
+    @CurrentOrg() org?: OrgContext,
+  ) {
+    const organizationId = user?.organizationId ?? org?.organizationId;
+    if (!organizationId) throw new UnauthorizedException();
+
+    if (!startTs || !endTs) throw new BadRequestException('startTs and endTs are required');
+    const start = new Date(startTs);
+    const end   = new Date(endTs);
+    if (isNaN(start.getTime())) throw new BadRequestException(`Invalid startTs: "${startTs}"`);
+    if (isNaN(end.getTime()))   throw new BadRequestException(`Invalid endTs: "${endTs}"`);
+    if (start > end)            throw new BadRequestException('startTs must be before or equal to endTs');
+
+    // Ensure sensor belongs to org
+    await this.sensors.findOne(sensorId, organizationId);
+
+    return this.timescale.queryDailySummary(
+      sensorId,
+      start,
+      end,
+      (sortDir as 'ASC' | 'DESC') ?? 'ASC',
+      limit ? Math.min(parseInt(limit, 10), 10_000) : undefined,
+    );
   }
 
   /**
@@ -241,6 +282,8 @@ export class QueryController {
       offset?: number;
       /** Only return these keys from processed_data */
       fields?: string[];
+      /** If false, force raw-only search (do not include archived daily summaries) */
+      includeSummaries?: boolean;
     },
     @CurrentUser() user?: AuthUser,
     @CurrentOrg() org?: OrgContext,
@@ -307,6 +350,7 @@ export class QueryController {
       limit: body.limit,
       offset: body.offset,
       fields: body.fields,
+      includeSummaries: body.includeSummaries,
     });
   }
 

@@ -35,6 +35,8 @@ export function ReadingsExplorer({ sensorIds: defaultSensorIds, siteId: defaultS
   const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('DESC');
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
+  // Data source mode: include archived daily summaries or raw-only
+  const [includeSummaries, setIncludeSummaries] = useState(true);
 
   // ── Nearest-to-time mode ──────────────────────────────────────
   const [nearestMode, setNearestMode] = useState(false);
@@ -52,6 +54,7 @@ export function ReadingsExplorer({ sensorIds: defaultSensorIds, siteId: defaultS
       offset: (page - 1) * pageSize,
       aggField: agg !== 'NONE' ? aggField : undefined,
       intervalMs: agg !== 'NONE' ? Number(intervalMin) * 60_000 : undefined,
+      includeSummaries,
     };
     if (startDate) {
       p.startTs = startTime
@@ -117,6 +120,21 @@ export function ReadingsExplorer({ sensorIds: defaultSensorIds, siteId: defaultS
         >
           Nearest to Time
         </button>
+        {/* Data mode toggle */}
+        {!nearestMode && (
+          <div className="ml-2 inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <button
+              onClick={() => { setIncludeSummaries(false); setPage(1); }}
+              className={`px-2.5 py-1.5 text-xs font-medium ${!includeSummaries ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              title="Show only raw rows (no archived summaries)"
+            >Raw only</button>
+            <button
+              onClick={() => { setIncludeSummaries(true); setPage(1); }}
+              className={`px-2.5 py-1.5 text-xs font-medium ${includeSummaries ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              title="Include archived daily summaries when raw is unavailable or range spans retention"
+            >Raw + Summarized</button>
+          </div>
+        )}
         <button onClick={handleReset} className="ml-auto text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
           Reset
         </button>
@@ -272,7 +290,7 @@ export function ReadingsExplorer({ sensorIds: defaultSensorIds, siteId: defaultS
               )}
               {meta.fromDailySummary && (
                 <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
-                  Showing archived daily summaries — raw data was removed by retention
+                  Showing archived daily summaries
                 </span>
               )}
               {isFetching && <span className="animate-pulse">Loading…</span>}
@@ -330,6 +348,7 @@ function RawTable({ rows, multiSensor }: { rows: Record<string, unknown>[]; mult
           <tr>
             {multiSensor && <th className="table-th">Sensor</th>}
             <th className="table-th whitespace-nowrap">Time</th>
+            <th className="table-th whitespace-nowrap">Value</th>
             {fields.map((f) => <th key={f} className="table-th whitespace-nowrap">{f}</th>)}
             <th className="table-th">Quality</th>
           </tr>
@@ -337,18 +356,35 @@ function RawTable({ rows, multiSensor }: { rows: Record<string, unknown>[]; mult
         <tbody>
           {rows.map((r, i) => {
             const pd = (r.processed_data ?? {}) as Record<string, unknown>;
+            const isSummary = String(r.quality_code ?? '') === 'SUMMARIZED';
+            const sv = r.summary_value as unknown as number | undefined;
+            const sm = r.summary_mode as unknown as string | undefined;
             return (
               <tr key={i} className="table-row">
                 {multiSensor && <td className="table-td font-mono text-xs">{String(r.sensor_id ?? '').slice(0, 8)}…</td>}
                 <td className="table-td whitespace-nowrap font-mono text-xs text-slate-500 dark:text-slate-400">
                   {r.phenomenon_time ? format(new Date(r.phenomenon_time as string), 'MMM d, HH:mm:ss') : '—'}
                 </td>
+                <td className="table-td font-mono text-xs">
+                  {isSummary && sv != null ? Number(sv).toFixed(3) : <span className="text-slate-300 dark:text-slate-600">—</span>}
+                </td>
                 {fields.map((f) => (
                   <td key={f} className="table-td font-mono text-xs">
                     {pd[f] != null ? String(pd[f]) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                   </td>
                 ))}
-                <td className="table-td text-xs">{String(r.quality_code ?? '—')}</td>
+                <td className="table-td text-xs">
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${
+                    isSummary ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'
+                  }`}>
+                    {String(r.quality_code ?? '—')}
+                    {isSummary && (
+                      <span className="text-[10px] uppercase tracking-wide">
+                        Summary{sm ? ` (${sm})` : ''}
+                      </span>
+                    )}
+                  </span>
+                </td>
               </tr>
             );
           })}

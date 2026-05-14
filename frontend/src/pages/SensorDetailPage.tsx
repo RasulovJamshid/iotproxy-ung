@@ -77,6 +77,7 @@ export default function SensorDetailPage() {
   const [rangeHours, setRangeHours] = useState(24);
   const [rawRangeHours, setRawRangeHours] = useState(24);
   const [bottomTab, setBottomTab] = useState<'readings' | 'explore' | 'alerts' | 'config' | 'virtual'>('readings');
+  const [chartAgg, setChartAgg] = useState<'AVG' | 'MIN' | 'MAX' | 'SUM' | 'LATEST'>('AVG');
   const [virtualOpen, setVirtualOpen] = useState(false);
   const [vName, setVName] = useState('');
   const [vFormula, setVFormula] = useState('');
@@ -102,7 +103,7 @@ export default function SensorDetailPage() {
     sensorId: id!,
     startTs,
     endTs,
-    agg: 'AVG',
+    agg: chartAgg,
     intervalMs,
     aggField: sensor?.aggField ?? 'value',
     rawRetentionDays: sensor?.rawRetentionDays ?? undefined,
@@ -123,10 +124,37 @@ export default function SensorDetailPage() {
 
   const chartData = (readings ?? []).map((r) => ({
     time: format(new Date(r.bucket), rangeHours <= 24 ? 'HH:mm' : rangeHours <= 168 ? 'MMM d HH:mm' : 'MMM d'),
-    avg: Number(r.avg_val?.toFixed(3)),
-    min: Number(r.min_val?.toFixed(3)),
-    max: Number(r.max_val?.toFixed(3)),
+    value:
+      chartAgg === 'AVG' ? Number(r.avg_val?.toFixed(3)) :
+      chartAgg === 'MIN' ? Number(r.min_val?.toFixed(3)) :
+      chartAgg === 'MAX' ? Number(r.max_val?.toFixed(3)) :
+      chartAgg === 'SUM' ? Number((r as any).sum_val?.toFixed?.(3) ?? (typeof (r as any).sum_val === 'number' ? (r as any).sum_val.toFixed(3) : 'NaN')) :
+      Number((r as any).latest_val?.toFixed?.(3) ?? (typeof (r as any).latest_val === 'number' ? (r as any).latest_val.toFixed(3) : 'NaN')),
   }));
+
+  const rawField = sensor?.aggField ?? 'value';
+  const rawChartData = (rawReadings ?? [])
+    .map((r) => {
+      const ts = new Date(r.phenomenon_time);
+      const vv = r?.processed_data?.[rawField] ?? r?.processed_data?.value;
+      let num: number | null = null;
+      if (typeof vv === 'number') num = vv;
+      else if (typeof vv === 'string') {
+        const n = Number(vv);
+        if (!Number.isNaN(n)) num = n;
+      } else if (r && r.processed_data) {
+        for (const k of Object.keys(r.processed_data)) {
+          const v: any = (r.processed_data as any)[k];
+          const n = typeof v === 'number' ? v : (typeof v === 'string' ? Number(v) : NaN);
+          if (!Number.isNaN(n)) { num = n; break; }
+        }
+      }
+      return {
+        time: format(ts, rawRangeHours <= 24 ? 'HH:mm:ss' : rawRangeHours <= 168 ? 'MMM d HH:mm' : 'MMM d'),
+        value: num,
+      };
+    })
+    .filter((p) => p.value != null);
 
   return (
     <div className="space-y-6">
@@ -424,7 +452,7 @@ export default function SensorDetailPage() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Readings</p>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {RANGES.map((r) => (
               <button
                 key={r.label}
@@ -438,6 +466,18 @@ export default function SensorDetailPage() {
                 {r.label}
               </button>
             ))}
+            <select
+              value={chartAgg}
+              onChange={(e) => setChartAgg(e.target.value as any)}
+              className="input py-1 text-xs ml-2"
+              title="Aggregation for chart (AVG/MIN/MAX)"
+            >
+              <option value="AVG">Avg</option>
+              <option value="MAX">Max</option>
+              <option value="MIN">Min</option>
+              <option value="SUM">Sum</option>
+              <option value="LATEST">Latest</option>
+            </select>
           </div>
         </div>
 
@@ -468,9 +508,61 @@ export default function SensorDetailPage() {
                   color: isDark ? '#e2e8f0' : '#1e293b',
                 }}
               />
-              <Area type="monotone" dataKey="avg" stroke="#3b82f6" fill="url(#avgGrad)" strokeWidth={2} dot={false} name="Avg" />
-              <Area type="monotone" dataKey="max" stroke={chartTickColor} fill="none" strokeWidth={1} strokeDasharray="4 2" dot={false} name="Max" />
-              <Area type="monotone" dataKey="min" stroke={chartTickColor} fill="none" strokeWidth={1} strokeDasharray="4 2" dot={false} name="Min" />
+              <Area type="monotone" dataKey="value" stroke="#3b82f6" fill="url(#avgGrad)" strokeWidth={2} dot={false} name={chartAgg} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Raw readings chart */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Raw Readings</p>
+          <div className="flex items-center gap-1">
+            {RANGES.map((r) => (
+              <button
+                key={r.label}
+                onClick={() => setRawRangeHours(r.hours)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  rawRangeHours === r.hours
+                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
+                    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {rawLoading ? (
+          <div className="flex items-center justify-center h-48">
+            <PageSpinner />
+          </div>
+        ) : rawChartData.length === 0 ? (
+          <p className="py-12 text-center text-sm text-slate-400 dark:text-slate-500">No raw readings in this period.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={rawChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="rawGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: chartTickColor }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: chartTickColor }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{
+                  fontSize: 12,
+                  borderRadius: 8,
+                  border: `1px solid ${tooltipBorder}`,
+                  background: tooltipBg,
+                  color: isDark ? '#e2e8f0' : '#1e293b',
+                }}
+              />
+              <Area type="monotone" dataKey="value" stroke="#10b981" fill="url(#rawGrad)" strokeWidth={2} dot={false} name="Raw" />
             </AreaChart>
           </ResponsiveContainer>
         )}

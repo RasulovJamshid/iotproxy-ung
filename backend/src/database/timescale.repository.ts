@@ -6,13 +6,13 @@ import { ProcessedReading } from '@iotproxy/shared';
 const ALLOWED_VIEWS = new Set(['sensor_readings', 'readings_1h', 'readings_1d']);
 const ALLOWED_TIME_COLS = new Set(['phenomenon_time', 'bucket']);
 
-export const ALLOWED_AGG = new Set(['AVG', 'MIN', 'MAX', 'SUM', 'COUNT', 'NONE']);
+export const ALLOWED_AGG = new Set(['AVG', 'MIN', 'MAX', 'SUM', 'LATEST', 'COUNT', 'NONE']);
 
 export interface TimeSeriesQueryParams {
   sensorId: string;
   startTs: Date;
   endTs: Date;
-  agg: 'AVG' | 'MIN' | 'MAX' | 'SUM' | 'COUNT' | 'NONE';
+  agg: 'AVG' | 'MIN' | 'MAX' | 'SUM' | 'LATEST' | 'COUNT' | 'NONE';
   intervalMs?: number;
   limit?: number;
   /** Keyset cursor: ISO timestamp — exclusive lower/upper bound depending on sortDir */
@@ -134,9 +134,12 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
     // If the entire requested range is older than the raw retention cutoff,
     // serve from daily summaries (raw data may have been purged).
+    // If the range spans the cutoff and interval is daily-or-higher, union summaries (older) + raw aggregation (recent).
     if (params.rawRetentionDays && params.rawRetentionDays > 0) {
       const cutoffMs = now - params.rawRetentionDays * 86_400_000;
-      if (params.endTs.getTime() < cutoffMs) {
+      const startMs = params.startTs.getTime();
+      const endMs = params.endTs.getTime();
+      if (endMs < cutoffMs) {
         return this.queryDailySummary(
           params.sensorId,
           params.startTs,
@@ -144,6 +147,20 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
           params.sortDir ?? 'ASC',
           params.limit,
         );
+      }
+      // Union if the window straddles the cutoff and the bucket is >= 1 day
+      const intervalMs = params.intervalMs ?? 3_600_000;
+      if (startMs < cutoffMs && endMs >= cutoffMs && intervalMs >= 86_400_000 && params.agg !== 'NONE') {
+        const older = await this.queryDailySummary(
+          params.sensorId,
+          params.startTs,
+          new Date(cutoffMs - 1),
+          'ASC',
+          params.limit,
+        );
+        const recent = await this.aggregateRaw({ ...params, startTs: new Date(cutoffMs), sortDir: 'ASC' });
+        const merged = [...older, ...recent].sort((a: any, b: any) => new Date(a.bucket).getTime() - new Date(b.bucket).getTime());
+        return (params.sortDir ?? 'ASC') === 'ASC' ? merged : merged.reverse();
       }
     }
 
@@ -170,6 +187,17 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     // if they return nothing, fall back once more to the application-level daily
     // summaries so historical data is always available after raw deletion.
     const thirtyDays = 30 * 86_400_000;
+
+    // Special handling: 'LATEST' needs raw or summary; views don't include latest_val
+    if (params.agg === 'LATEST' && rangeMs > thirtyDays) {
+      return this.queryDailySummary(
+        params.sensorId,
+        params.startTs,
+        params.endTs,
+        params.sortDir ?? 'ASC',
+        params.limit,
+      );
+    }
 
     if (rangeMs <= thirtyDays) {
       return this.aggregateRaw(params);
@@ -594,23 +622,26 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     limit?: number;
     offset?: number;
     fields?: string[];
+    /** If false, never fall back to readings_daily_summary (raw-only mode). Default: true */
+    includeSummaries?: boolean;
   }) {
     const dir = params.sortDir ?? 'DESC';
     const lim = Math.min(params.limit ?? 500, 10_000);
     const off = params.offset ?? 0;
     const agg = params.agg ?? 'NONE';
+    const includeSummaries = params.includeSummaries !== false;
 
     const args: unknown[] = [params.organizationId];
-    const conditions: string[] = ['sr.organization_id = $1'];
+    const conditions: string[] = ['sr.organization_id::uuid = $1::uuid'];
 
     // ── Sensor / site filter ───────────────────────────────────────────
     if (params.sensorIds && params.sensorIds.length > 0) {
       args.push(params.sensorIds);
-      conditions.push(`sr.sensor_id = ANY($${args.length})`);
+      conditions.push(`sr.sensor_id::uuid = ANY($${args.length}::uuid[])`);
     }
     if (params.siteId) {
       args.push(params.siteId);
-      conditions.push(`sr.site_id = $${args.length}`);
+      conditions.push(`sr.site_id::uuid = $${args.length}::uuid`);
     }
 
     // ── Time range ─────────────────────────────────────────────────────
@@ -665,19 +696,150 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     // ── Raw (non-aggregated) path ──────────────────────────────────────
     if (agg === 'NONE') {
       // Select specific fields from processed_data if requested
-      let fieldsSelect = 'sr.processed_data';
-      if (params.fields && params.fields.length > 0) {
-        const picks = params.fields
-          .map((f) => `'${f.replace(/'/g, "''")}'`)
-          .join(', ');
-        fieldsSelect = `jsonb_strip_nulls(
-          jsonb_build_object(${params.fields
+      const fieldsExpr = (params.fields && params.fields.length > 0)
+        ? `jsonb_strip_nulls(jsonb_build_object(${params.fields
             .map((f) => `'${f.replace(/'/g, "''")}', sr.processed_data->'${f.replace(/'/g, "''")}'`)
-            .join(', ')})
-        ) AS processed_data`;
+            .join(', ') }))`
+        : 'sr.processed_data';
+
+      // If summaries are allowed and this is a time-sorted listing (the common case),
+      // build a UNION ALL over raw + daily summaries and apply ORDER/LIMIT/OFFSET post-union
+      const unionEnabled = includeSummaries && !params.exactTime && (params.sortBy === undefined || params.sortBy === 'time') && ((params.sensorIds && params.sensorIds.length > 0) || !!params.siteId);
+
+      if (unionEnabled) {
+        const uargs: unknown[] = [];
+
+        // Common filters
+        uargs.push(params.organizationId); // $1
+        const orgP = '$1';
+
+        let sensorP = '';
+        if (params.sensorIds && params.sensorIds.length > 0) {
+          uargs.push(params.sensorIds); // $2
+          sensorP = `$${uargs.length}`;
+        }
+
+        let siteP = '';
+        if (params.siteId) {
+          uargs.push(params.siteId); // next
+          siteP = `$${uargs.length}`;
+        }
+
+        let startP = '';
+        if (params.startTs) {
+          uargs.push(params.startTs);
+          startP = `$${uargs.length}`;
+        }
+
+        let endP = '';
+        if (params.endTs) {
+          uargs.push(params.endTs);
+          endP = `$${uargs.length}`;
+        }
+
+        let minQ = '';
+        if (params.minQuality !== undefined) {
+          uargs.push(params.minQuality);
+          minQ = `$${uargs.length}`;
+        }
+
+        // Raw leg WHERE
+        const rawConds: string[] = [`sr.organization_id::uuid = ${orgP}::uuid`];
+        if (sensorP) rawConds.push(`sr.sensor_id::uuid = ANY(${sensorP}::uuid[])`);
+        if (siteP) rawConds.push(`sr.site_id::uuid = ${siteP}::uuid`);
+        if (startP) rawConds.push(`sr.phenomenon_time >= ${startP}`);
+        if (endP) rawConds.push(`sr.phenomenon_time <= ${endP}`);
+        if (minQ) rawConds.push(`sr.quality_code >= ${minQ}`);
+
+        const rawSQL = `
+          SELECT sr.sensor_id AS sensor_id,
+                 sr.phenomenon_time AS phenomenon_time,
+                 ${fieldsExpr} AS processed_data,
+                 sr.quality_code::text AS quality_code,
+                 sr.pipeline_flags AS pipeline_flags,
+                 NULL::double precision AS summary_value,
+                 NULL::text AS summary_mode
+          FROM sensor_readings sr
+          WHERE ${rawConds.join(' AND ')}
+        `;
+
+        // Summary leg WHERE
+        const hasSiteJoin = true;
+        const sumConds: string[] = [`ds.organization_id::uuid = ${orgP}::uuid`];
+        if (sensorP) sumConds.push(`ds.sensor_id::uuid = ANY(${sensorP}::uuid[])`);
+        if (siteP) sumConds.push(`s.site_id::uuid = ${siteP}::uuid`);
+        if (startP) sumConds.push(`ds.day >= ${startP}::date`);
+        if (endP) sumConds.push(`ds.day <= ${endP}::date`);
+
+        const sumSQL = `
+          SELECT ds.sensor_id AS sensor_id,
+                 (ds.day::timestamp) AS phenomenon_time,
+                 jsonb_build_object('avg', ds.avg_val, 'min', ds.min_val, 'max', ds.max_val, 'latest', ds.latest_val, 'sum', ds.sum_val) AS processed_data,
+                 'SUMMARIZED'::text AS quality_code,
+                 ARRAY['daily_summary']::text[] AS pipeline_flags,
+                 CASE COALESCE(s.summary_agg_mode, 'AVG')
+                   WHEN 'MAX'    THEN ds.max_val
+                   WHEN 'MIN'    THEN ds.min_val
+                   WHEN 'LATEST' THEN ds.latest_val
+                   WHEN 'SUM'    THEN ds.sum_val
+                   ELSE ds.avg_val
+                 END AS summary_value,
+                 COALESCE(s.summary_agg_mode, 'AVG') AS summary_mode
+          FROM readings_daily_summary ds
+          JOIN sensors s ON s.id = ds.sensor_id
+          WHERE ${sumConds.join(' AND ')}
+            AND NOT EXISTS (
+              SELECT 1 FROM sensor_readings sr2
+              WHERE sr2.organization_id::uuid = ${orgP}::uuid
+                ${sensorP ? `AND sr2.sensor_id::uuid = ANY(${sensorP}::uuid[])` : ''}
+                ${siteP ? `AND sr2.site_id::uuid = ${siteP}::uuid` : ''}
+                AND sr2.phenomenon_time >= ds.day::timestamp
+                AND sr2.phenomenon_time < (ds.day::timestamp + interval '1 day')
+                ${minQ ? `AND sr2.quality_code >= ${minQ}` : ''}
+            )
+        `;
+
+        // Count total across union
+        const countRes = await this.pool.query(
+          `SELECT COUNT(*)::int AS total FROM ( ${rawSQL} UNION ALL ${sumSQL} ) u`,
+          uargs,
+        );
+        const total: number = countRes.rows[0]?.total ?? 0;
+
+        // Page after union
+        uargs.push(lim, off);
+        const dataRes = await this.pool.query(
+          `SELECT *
+           FROM ( ${rawSQL} UNION ALL ${sumSQL} ) u
+           ORDER BY u.phenomenon_time ${dir}, u.sensor_id
+           LIMIT $${uargs.length - 1} OFFSET $${uargs.length}`,
+          uargs,
+        );
+
+        const rows = dataRes.rows;
+        const dataStart = rows.length > 0
+          ? rows.reduce((a: any, b: any) => new Date(a.phenomenon_time) < new Date(b.phenomenon_time) ? a : b).phenomenon_time
+          : null;
+        const dataEnd = rows.length > 0
+          ? rows.reduce((a: any, b: any) => new Date(a.phenomenon_time) > new Date(b.phenomenon_time) ? a : b).phenomenon_time
+          : null;
+        const hasSummary = rows.some((r: any) => r.quality_code === 'SUMMARIZED');
+
+        return {
+          data: rows,
+          meta: {
+            total,
+            limit: lim,
+            offset: off,
+            returned: rows.length,
+            dataStart,
+            dataEnd,
+            fromDailySummary: hasSummary,
+          },
+        };
       }
 
-      // Count total matching rows
+      // Fallback: raw-only (keeps previous behavior including summary fallback when empty or spanning retention)
       const countResult = await this.pool.query(
         `SELECT COUNT(*)::int AS total FROM sensor_readings sr WHERE ${whereClause}`,
         args,
@@ -687,7 +849,7 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
       // Fetch page
       args.push(lim, off);
       const result = await this.pool.query(
-        `SELECT sr.sensor_id, sr.phenomenon_time, ${fieldsSelect},
+        `SELECT sr.sensor_id, sr.phenomenon_time, ${fieldsExpr} AS processed_data,
                 sr.quality_code, sr.pipeline_flags
          FROM sensor_readings sr
          WHERE ${whereClause}
@@ -696,7 +858,6 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
         args,
       );
 
-      // Data boundaries
       const dataStart = result.rows.length > 0
         ? result.rows.reduce((a: any, b: any) =>
             new Date(a.phenomenon_time) < new Date(b.phenomenon_time) ? a : b
@@ -708,18 +869,12 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
           ).phenomenon_time
         : null;
 
-      // If raw table returned nothing and we have specific sensor IDs, fall back
-      // to readings_daily_summary (data archived by the retention process).
-      // Also check if the query start date is older than typical retention (7 days)
-      // to catch cases where SOME raw data exists (e.g., today) but older data is archived.
       const shouldCheckSummaries = params.sensorIds && params.sensorIds.length > 0 && !params.exactTime;
       const querySpansRetention = params.startTs && (Date.now() - params.startTs.getTime()) > 7 * 86_400_000;
-      
-      if (shouldCheckSummaries && (total === 0 || querySpansRetention)) {
+
+      if (includeSummaries && shouldCheckSummaries && (total === 0 || querySpansRetention)) {
         const summary = await this.searchFromDailySummary(params, dir, lim, off, 'raw');
         if (summary) {
-          // If we have both raw and summary data, we should ideally merge them,
-          // but for now return summary data if the query spans retention period
           if (total === 0 || querySpansRetention) {
             return summary;
           }
@@ -781,8 +936,8 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     // Also check if the query start date is older than typical retention (7 days).
     const shouldCheckSummaries = params.sensorIds && params.sensorIds.length > 0 && !params.exactTime;
     const querySpansRetention = params.startTs && (Date.now() - params.startTs.getTime()) > 7 * 86_400_000;
-    
-    if (shouldCheckSummaries && (total === 0 || querySpansRetention)) {
+
+    if (includeSummaries && shouldCheckSummaries && (total === 0 || querySpansRetention)) {
       const summary = await this.searchFromDailySummary(params, dir, lim, off, 'agg');
       if (summary) {
         if (total === 0 || querySpansRetention) {
@@ -835,7 +990,10 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
     const whereClause = conditions.join(' AND ');
 
     const countRes = await this.pool.query(
-      `SELECT COUNT(*)::int AS total FROM readings_daily_summary WHERE ${whereClause}`,
+      `SELECT COUNT(*)::int AS total
+       FROM readings_daily_summary ds
+       JOIN sensors s ON s.id = ds.sensor_id
+       WHERE ${whereClause.replace(/\bsensor_id\b/g, 'ds.sensor_id').replace(/\borganization_id\b/g, 'ds.organization_id')}`,
       args,
     );
     const total: number = countRes.rows[0]?.total ?? 0;
@@ -843,32 +1001,53 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
 
     args.push(lim, off);
     const rows = (await this.pool.query(
-      `SELECT sensor_id, day, avg_val, min_val, max_val, sample_count
-       FROM readings_daily_summary
-       WHERE ${whereClause}
-       ORDER BY day ${dir}, sensor_id
+      `SELECT ds.sensor_id AS sensor_id,
+              ds.day        AS day,
+              ds.avg_val    AS avg_val,
+              ds.min_val    AS min_val,
+              ds.max_val    AS max_val,
+              ds.latest_val AS latest_val,
+              ds.sum_val    AS sum_val,
+              ds.sample_count AS sample_count,
+              COALESCE(s.summary_agg_mode, 'AVG') AS summary_mode,
+              CASE COALESCE(s.summary_agg_mode, 'AVG')
+                WHEN 'MAX'    THEN ds.max_val
+                WHEN 'MIN'    THEN ds.min_val
+                WHEN 'LATEST' THEN ds.latest_val
+                WHEN 'SUM'    THEN ds.sum_val
+                ELSE ds.avg_val
+              END AS summary_value
+       FROM readings_daily_summary ds
+       JOIN sensors s ON s.id = ds.sensor_id
+       WHERE ${whereClause.replace(/\bsensor_id\b/g, 'ds.sensor_id').replace(/\borganization_id\b/g, 'ds.organization_id')}
+       ORDER BY ds.day ${dir}, ds.sensor_id
        LIMIT $${args.length - 1} OFFSET $${args.length}`,
       args,
     )).rows;
 
     let data: Record<string, unknown>[];
     if (mode === 'raw') {
-      data = rows.map((r) => ({
+      data = rows.map((r: any) => ({
         sensor_id: r.sensor_id,
         phenomenon_time: new Date(r.day).toISOString(),
-        processed_data: { avg: r.avg_val, min: r.min_val, max: r.max_val },
+        processed_data: { avg: r.avg_val, min: r.min_val, max: r.max_val, latest: r.latest_val, sum: r.sum_val },
         quality_code: 'SUMMARIZED',
         pipeline_flags: ['daily_summary'],
+        summary_value: r.summary_value,
+        summary_mode: r.summary_mode,
       }));
     } else {
-      data = rows.map((r) => ({
+      data = rows.map((r: any) => ({
         bucket: new Date(r.day).toISOString(),
         sensor_id: r.sensor_id,
         avg_val: r.avg_val,
         min_val: r.min_val,
         max_val: r.max_val,
-        sum_val: null,
+        latest_val: r.latest_val,
+        sum_val: r.sum_val,
         sample_count: r.sample_count,
+        summary_value: r.summary_value,
+        summary_mode: r.summary_mode,
       }));
     }
 
@@ -1043,6 +1222,8 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
               AVG(numeric_val) AS avg_val,
               MIN(numeric_val) AS min_val,
               MAX(numeric_val) AS max_val,
+              SUM(numeric_val) AS sum_val,
+              (array_agg(numeric_val ORDER BY phenomenon_time DESC))[1] AS latest_val,
               COUNT(*)::int    AS sample_count
        FROM (
          SELECT phenomenon_time,
@@ -1102,6 +1283,7 @@ export class TimescaleRepository implements OnModuleInit, OnModuleDestroy {
                 AVG(avg_val)        AS avg_val,
                 MIN(min_val)        AS min_val,
                 MAX(max_val)        AS max_val,
+                SUM(avg_val * sample_count) AS sum_val,
                 SUM(sample_count)   AS sample_count
          FROM ${view}
          WHERE sensor_id = $2

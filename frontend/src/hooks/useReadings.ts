@@ -5,7 +5,7 @@ export interface ReadingsParams {
   sensorId: string;
   startTs: string;
   endTs: string;
-  agg?: 'AVG' | 'MIN' | 'MAX' | 'NONE';
+  agg?: 'AVG' | 'MIN' | 'MAX' | 'SUM' | 'LATEST' | 'NONE';
   intervalMs?: number;
   aggField?: string;
   /** Sensor's effective raw retention in days — lets the backend fall back to
@@ -27,7 +27,7 @@ export function useReadings(params: ReadingsParams) {
           ...(params.rawRetentionDays != null && { rawRetentionDays: params.rawRetentionDays }),
         },
       });
-      return data as Array<{ bucket: string; avg_val: number; min_val: number; max_val: number }>;
+      return data as Array<{ bucket: string; avg_val: number; min_val: number; max_val: number; sum_val?: number; latest_val?: number }>;
     },
     refetchInterval: 60_000,
   });
@@ -97,6 +97,8 @@ export interface SearchReadingsParams {
   limit?: number;
   offset?: number;
   fields?: string[];
+  /** If false, force raw-only search; if true/undefined, allow raw+summaries */
+  includeSummaries?: boolean;
 }
 
 export interface SearchMeta {
